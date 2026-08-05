@@ -1013,3 +1013,174 @@ tr:last-child td {
         font-size: 20px;
     }
 }
+
+@media (max-width: 480px) {
+    :root {
+        --radius: 8px;
+        --radius-lg: 10px;
+    }
+
+    body {
+        font-size: 15px;
+        line-height: 1.5;
+    }
+
+    .mobile-app-bar {
+        height: calc(52px + env(safe-area-inset-top));
+        padding-inline: 10px;
+    }
+
+    .mobile-nav-toggle,
+    .btn-icon {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .main-content {
+        padding: 12px 10px 24px;
+    }
+
+    .page-header .greeting {
+        font-size: 18px;
+    }
+
+    .page-header .date {
+        font-size: 12px;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .stat-card {
+        padding: 14px 12px;
+        min-width: 0;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        margin-bottom: 4px;
+    }
+
+    .stat-value {
+        font-size: 22px;
+    }
+
+    .card {
+        margin-bottom: 12px;
+    }
+
+    .card-header,
+    .card-body,
+    .card-footer {
+        padding: 14px 12px;
+    }
+
+    .quick-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .quick-card {
+        padding: 14px 12px;
+        min-height: 72px;
+    }
+
+    .quick-icon {
+        width: 40px;
+        height: 40px;
+    }
+
+    .form-input,
+    .form-select,
+    .form-textarea,
+    .search-input,
+    .btn {
+        min-height: 48px;
+        font-size: 15px;
+    }
+
+    .btn {
+        justify-content: center;
+        padding: 10px 14px;
+    }
+
+    .fingerprint-login-button {
+        width: 100%;
+        margin-top: 10px;
+        color: var(--accent);
+        border-color: var(--accent);
+        background: var(--card);
+    }
+
+    .login-page {
+        min-height: calc(100vh - env(safe-area-inset-top));
+        padding: 18px 14px;
+        justify-content: flex-start;
+    }
+
+    .login-card {
+        margin-top: 8vh;
+        padding: 26px 18px;
+        border-radius: 10px;
+        box-shadow: none;
+    }
+
+    .login-card .app-logo {
+        width: 36px;
+        height: 36px;
+        flex-basis: 36px;
+    }
+
+    .login-card .subtitle {
+        margin-bottom: 24px;
+    }
+
+    .modal-overlay.active {
+        align-items: flex-end;
+    }
+
+    .modal,
+    .modal.mobile-bottom-sheet {
+        width: 100%;
+        max-height: 88vh;
+        margin: 0;
+        border-radius: 14px 14px 0 0;
+    }
+
+    .modal-header {
+        padding: 16px 14px;
+    }
+
+    .modal-body {
+        padding: 16px 14px;
+    }
+
+    .modal-footer {
+        padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    }
+
+    .toast-container {
+        top: auto;
+        right: 10px;
+        bottom: calc(14px + env(safe-area-inset-bottom));
+        left: 10px;
+    }
+
+    .toast {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .table-wrapper {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--card);
+    }
+
+    th,
+    td {
+        padding: 10px 12px;
+    }
+}

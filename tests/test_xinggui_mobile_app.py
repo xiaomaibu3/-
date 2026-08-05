@@ -56,6 +56,37 @@ class XingguiMobileAppTest(unittest.TestCase):
         self.assertIn("setDomStorageEnabled(true)", activity)
         self.assertIn("new WebViewClient()", activity)
 
+    def test_android_wrapper_uses_system_auth_for_local_credential_login(self):
+        manifest = (ROOT / "android-xinggui" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
+        activity = (ROOT / "android-xinggui" / "app" / "src" / "main" / "java" / "com" / "xinggui" / "app" / "MainActivity.java").read_text(encoding="utf-8")
+
+        self.assertIn("android.permission.USE_BIOMETRIC", manifest)
+        self.assertIn("android.permission.USE_FINGERPRINT", manifest)
+        self.assertIn("@JavascriptInterface", activity)
+        self.assertIn("enableCredentialLogin", activity)
+        self.assertIn("requestFingerprintLogin", activity)
+        self.assertIn("AndroidKeyStore", activity)
+        self.assertIn("setUserAuthenticationRequired(true)", activity)
+        self.assertIn("BiometricPrompt", activity)
+        self.assertIn("xinggui:credentials", activity)
+
+    def test_web_login_exposes_fingerprint_login_for_android_shell(self):
+        login = (ROOT / "templates" / "login.html").read_text(encoding="utf-8")
+        pwa_js = (ROOT / "static" / "js" / "pwa.js").read_text(encoding="utf-8")
+
+        self.assertIn("enableCredentialLogin", login)
+        self.assertIn("fingerprint-login-button", pwa_js)
+        self.assertIn("requestFingerprintLogin", pwa_js)
+        self.assertIn("xinggui:credentials", pwa_js)
+
+    def test_mobile_styles_use_phone_first_proportions(self):
+        css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+
+        self.assertIn("@media (max-width: 480px)", css)
+        self.assertIn("min-height: 48px", css)
+        self.assertIn(".modal.mobile-bottom-sheet", css)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr))", css)
+
 
 if __name__ == "__main__":
     unittest.main()
