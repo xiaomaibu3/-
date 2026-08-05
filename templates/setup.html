@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目管理系统 - 初始化设置</title>
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="login-page">
+        <div class="login-card">
+            <h1><img class="app-logo" src="/static/icons/app-icon.svg" alt="" aria-hidden="true"> 系统初始化</h1>
+            <p class="subtitle">首次运行，请设置数据存储目录</p>
+            <form id="setupForm">
+                <div class="form-group">
+                    <label class="form-label">数据根目录</label>
+                    <input type="text" class="form-input" id="data_root" name="data_root"
+                           placeholder="例如: /home/user/project_data" required>
+                    <p style="font-size:12px;color:var(--text-muted);margin-top:6px">
+                        数据库文件和附件将存储在此目录下
+                    </p>
+                </div>
+                <div class="form-group" style="margin-top:24px">
+                    <button type="submit" class="btn btn-primary">确认并初始化</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="toast-container"></div>
+    <script>
+        function toast(msg, type) {
+            const c = document.querySelector('.toast-container');
+            const el = document.createElement('div');
+            el.className = 'toast ' + type;
+            el.innerHTML = '<span>' + msg + '</span>';
+            c.appendChild(el);
+            setTimeout(() => el.remove(), 3500);
+        }
+
+        document.getElementById('setupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = { data_root: document.getElementById('data_root').value };
+            const res = await fetch('/setup', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.error) {
+                toast(result.error, 'error');
+            } else if (result.redirect) {
+                toast('初始化成功！', 'success');
+                setTimeout(() => window.location.href = result.redirect, 1000);
+            }
+        });
+    </script>
+</body>
+</html>

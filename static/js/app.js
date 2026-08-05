@@ -1,0 +1,115 @@
+/**
+ * 项目管理系统 - 前端核心 JS
+ * SPA 风格，基于 fetch API 与后端交互
+ */
+
+// ── 工具函数 ──────────────────────────────────────────────────
+const $ = (sel, ctx = document) => ctx.querySelector(sel);
+const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+
+function toast(msg, type = 'success') {
+    const container = $('.toast-container') || (() => {
+        const d = document.createElement('div');
+        d.className = 'toast-container';
+        document.body.appendChild(d);
+        return d;
+    })();
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `<span>${msg}</span>`;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+}
+
+async function api(url, options = {}) {
+    const defaults = {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin'
+    };
+    if (options.body && !(options.body instanceof FormData)) {
+        options.body = JSON.stringify(options.body);
+    } else if (options.body instanceof FormData) {
+        delete defaults.headers['Content-Type'];
+    }
+    const res = await fetch(url, { ...defaults, ...options });
+    if (res.status === 401) {
+        window.location.href = '/login';
+        return null;
+    }
+    const data = await res.json();
+    if (data.error) {
+        toast(data.error, 'error');
+        return null;
+    }
+    return data;
+}
+
+function formatDate(str) {
+    if (!str) return '-';
+    const d = new Date(str);
+    return d.toLocaleDateString('zh-CN');
+}
+
+function formatDateTime(str) {
+    if (!str) return '-';
+    const d = new Date(str);
+    return d.toLocaleString('zh-CN');
+}
+
+function getBadgeClass(status) {
+    const map = {
+        '进行中': 'badge-info', '已完成': 'badge-success', '已暂停': 'badge-warning',
+        '草稿': 'badge-gray', '待审批': 'badge-warning', '已通过': 'badge-success',
+        '已驳回': 'badge-danger', '已发布': 'badge-success', '已归档': 'badge-gray',
+        '正常': 'badge-success', '异常': 'badge-danger', '待核查': 'badge-warning',
+    };
+    return map[status] || 'badge-gray';
+}
+
+function showModal(id) {
+    const modal = $(`#${id}`);
+    if (modal) modal.classList.add('active');
+}
+
+function hideModal(id) {
+    const modal = $(`#${id}`);
+    if (modal) modal.classList.remove('active');
+}
+
+// ── 页面路由 ──────────────────────────────────────────────────
+const routes = {};
+let currentPage = '';
+
+function registerPage(name, renderFn) {
+    routes[name] = renderFn;
+}
+
+function navigateTo(page, params = {}) {
+    currentPage = page;
+    const content = $('#page-content');
+    if (!content) return;
+
+    // 更新导航高亮
+    $$('.nav-item').forEach(el => el.classList.remove('active'));
+    const navItem = $(`.nav-item[data-page="${page}"]`);
+    if (navItem) navItem.classList.add('active');
+
+    if (routes[page]) {
+        routes[page](content, params);
+    }
+}
+
+// ── 初始化 ──────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    // 导航点击
+    $$('.nav-item[data-page]').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigateTo(el.dataset.page);
+        });
+    });
+
+    // 默认页面
+    const defaultPage = $('.nav-item.active')?.dataset?.page || 'dashboard';
+    navigateTo(defaultPage);
+});

@@ -1,0 +1,2254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目管理系统</title>
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="app-layout">
+    <!-- ── 侧边栏 ─────────────────────────────────── -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h1>
+                <img class="app-logo" src="/static/icons/app-icon.svg" alt="" aria-hidden="true">
+                项目管理系统
+            </h1>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">概览</div>
+                <a class="nav-item active" data-page="dashboard" href="#">
+                    <span class="icon">📊</span> 仪表盘
+                </a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">项目管理</div>
+                <a class="nav-item" data-page="projects" href="#">
+                    <span class="icon">📁</span> 项目登记
+                </a>
+                <a class="nav-item" data-page="files" href="#">
+                    <span class="icon">📎</span> 立项文件库
+                </a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">设计管理</div>
+                <a class="nav-item" data-page="requirements" href="#">
+                    <span class="icon">📝</span> 需求管理
+                </a>
+                <a class="nav-item" data-page="drawings" href="#">
+                    <span class="icon">📐</span> 图纸管理
+                </a>
+                <a class="nav-item" data-page="bom" href="#">
+                    <span class="icon">🔧</span> BOM管理
+                </a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">流程</div>
+                <a class="nav-item" data-page="approvals" href="#">
+                    <span class="icon">✅</span> 审批中心
+                </a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">系统</div>
+                <a class="nav-item" data-page="users" href="#">
+                    <span class="icon">👥</span> 用户管理
+                </a>
+                <a class="nav-item" data-page="settings" href="#">
+                    <span class="icon">⚙️</span> 系统设置
+                </a>
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">{{ session.real_name[0] if session.real_name else 'U' }}</div>
+                <div class="user-meta">
+                    <div class="user-name">{{ session.real_name or session.username }}</div>
+                    <div class="user-role">{{ session.role }}</div>
+                </div>
+                <a href="/logout" class="btn btn-sm btn-icon" title="退出">🚪</a>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ── 主内容区 ───────────────────────────────── -->
+    <main class="main-content">
+        <div id="page-content">
+            <!-- 动态内容由 JS 渲染 -->
+            <div class="loading"><div class="spinner"></div>加载中...</div>
+        </div>
+    </main>
+</div>
+
+<div class="toast-container"></div>
+
+<!-- ── 通用模态框 ─────────────────────────────────── -->
+<div class="modal-overlay" id="modal-main">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 id="modal-title">标题</h2>
+            <button class="modal-close" onclick="hideModal('modal-main')">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-footer" id="modal-footer"></div>
+    </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+// ── 仪表盘 ──────────────────────────────────────────────────
+registerPage('dashboard', async (el) => {
+    const stats = await api('/api/dashboard/stats');
+    if (!stats) return;
+
+    const today = new Date().toLocaleDateString('zh-CN', {
+        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+    });
+
+    el.innerHTML = `
+        <div class="page-header">
+            <div class="greeting">👋 欢迎回来，{{ session.real_name or session.username }}</div>
+            <div class="date">${today}</div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card accent">
+                <div class="stat-label">📁 进行中项目</div>
+                <div class="stat-value">${stats.projects_active}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">📋 总项目数</div>
+                <div class="stat-value">${stats.projects_total}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">📝 需求总数</div>
+                <div class="stat-value">${stats.reqs_total}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">⏳ 待审批</div>
+                <div class="stat-value">${stats.pending_approvals}</div>
+            </div>
+        </div>
+
+        <div class="two-col">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">⚡ 快捷入口</span>
+                </div>
+                <div class="card-body">
+                    <div class="quick-grid">
+                        <div class="quick-card" onclick="navigateTo('projects')">
+                            <div class="quick-icon">📁</div>
+                            <div class="quick-text"><h3>项目登记</h3><p>创建和管理项目</p></div>
+                        </div>
+                        <div class="quick-card" onclick="navigateTo('requirements')">
+                            <div class="quick-icon">📝</div>
+                            <div class="quick-text"><h3>需求管理</h3><p>管理项目需求</p></div>
+                        </div>
+                        <div class="quick-card" onclick="navigateTo('drawings')">
+                            <div class="quick-icon">📐</div>
+                            <div class="quick-text"><h3>图纸管理</h3><p>图纸版本控制</p></div>
+                        </div>
+                        <div class="quick-card" onclick="navigateTo('bom')">
+                            <div class="quick-icon">🔧</div>
+                            <div class="quick-text"><h3>BOM管理</h3><p>物料清单管理</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">📜 最近操作</span>
+                </div>
+                <div class="card-body">
+                    ${stats.recent_activity.length ? stats.recent_activity.map(a => `
+                        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+                            <div style="flex:1">
+                                <div style="font-size:13px;font-weight:500">${a.action}</div>
+                                <div style="font-size:12px;color:var(--text-muted)">${a.details || ''}</div>
+                            </div>
+                            <div style="font-size:12px;color:var(--text-muted);white-space:nowrap">${formatDateTime(a.timestamp)}</div>
+                        </div>
+                    `).join('') : '<div class="empty-state"><p>暂无操作记录</p></div>'}
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">📐 图纸总数</div>
+                <div class="stat-value">${stats.drawings_total}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">🔧 BOM总数</div>
+                <div class="stat-value">${stats.boms_total}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">📋 总项目数</div>
+                <div class="stat-value">${stats.projects_total}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">✅ 已完成项目</div>
+                <div class="stat-value">${stats.projects_total - stats.projects_active}</div>
+            </div>
+        </div>
+    `;
+});
+
+// ── 项目管理 ──────────────────────────────────────────────────
+registerPage('projects', async (el) => {
+    const projects = await api('/api/projects');
+    if (!projects) return;
+
+    el.innerHTML = `
+        <div class="page-header">
+            <div class="greeting">📁 项目登记</div>
+            <div class="date">管理所有项目信息</div>
+        </div>
+
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <input type="text" class="search-input" placeholder="搜索项目名称或编号..." id="project-search">
+            </div>
+            <div class="toolbar-right">
+                <button class="btn btn-primary" onclick="showCreateProject()">+ 新建项目</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>项目编号</th>
+                            <th>项目名称</th>
+                            <th>客户</th>
+                            <th>类型</th>
+                            <th>项目经理</th>
+                            <th>状态</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="projects-tbody">
+                        ${projects.map(p => `
+                            <tr>
+                                <td style="font-weight:500;color:var(--accent)">${p.project_number}</td>
+                                <td>${p.project_name}</td>
+                                <td>${p.customer || '-'}</td>
+                                <td><span class="badge badge-info">${p.type || '-'}</span></td>
+                                <td>${p.manager_name || '-'}</td>
+                                <td><span class="badge ${getBadgeClass(p.status)}">${p.status}</span></td>
+                                <td>${formatDate(p.created_at)}</td>
+                                <td class="actions">
+                                    <button class="btn btn-sm" onclick="navigateTo('project-detail', {id:${p.id}})">查看</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteProject(${p.id})">删除</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            ${projects.length === 0 ? '<div class="empty-state"><div class="icon">📁</div><p>暂无项目，点击上方按钮创建</p></div>' : ''}
+        </div>
+    `;
+
+    // 搜索
+    $('#project-search').addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        $$('#projects-tbody tr').forEach(tr => {
+            tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+    });
+});
+
+function showCreateProject() {
+    const types = ['研发', '生产', '外包', '内部'];
+    const statusList = ['进行中', '已暂停', '已完成'];
+
+    $('#modal-title').textContent = '新建项目';
+    $('#modal-body').innerHTML = `
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">项目类型</label>
+                <select class="form-select" id="p-type" onchange="previewProjectNumber()">
+                    ${types.map(t => `<option value="${t}">${t}</option>`).join('')}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">项目编号</label>
+                <div style="display:flex;gap:8px">
+                    <input type="text" class="form-input" id="p-number" readonly placeholder="点击生成">
+                    <button class="btn btn-primary" onclick="previewProjectNumber()" type="button">生成</button>
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">项目名称 *</label>
+            <input type="text" class="form-input" id="p-name" required>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">客户</label>
+                <input type="text" class="form-input" id="p-customer">
+            </div>
+            <div class="form-group">
+                <label class="form-label">预算 (元)</label>
+                <input type="number" class="form-input" id="p-budget" value="0">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">开始日期</label>
+                <input type="date" class="form-input" id="p-start">
+            </div>
+            <div class="form-group">
+                <label class="form-label">结束日期</label>
+                <input type="date" class="form-input" id="p-end">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">项目经理</label>
+            <select class="form-select" id="p-manager">
+                <option value="">-- 请选择 --</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">项目描述</label>
+            <textarea class="form-textarea" id="p-desc"></textarea>
+        </div>
+    `;
+    $('#modal-footer').innerHTML = `
+        <button class="btn" onclick="hideModal('modal-main')">取消</button>
+        <button class="btn btn-primary" onclick="createProject()">创建</button>
+    `;
+    showModal('modal-main');
+    // 自动生成项目号
+    previewProjectNumber();
+
+    // 加载项目经理列表
+    api('/api/users').then(users => {
+        if (!users) return;
+        const sel = $('#p-manager');
+        users.filter(u => u.is_active && ['项目经理', '项目管理员', '系统管理员'].includes(u.role))
+            .forEach(u => {
+                sel.innerHTML += `<option value="${u.id}">${u.real_name} (${u.role})</option>`;
+            });
+    });
+}
+
+async function previewProjectNumber() {
+    const type = $('#p-type').value;
+    const res = await api('/api/projects/generate-number', {
+        method: 'POST', body: { type }
+    });
+    if (res) $('#p-number').value = res.project_number;
+}
+
+async function createProject() {
+    const data = {
+        project_number: $('#p-number').value,
+        project_name: $('#p-name').value,
+        customer: $('#p-customer').value,
+        type: $('#p-type').value,
+        manager_id: $('#p-manager').value || null,
+        start_date: $('#p-start').value,
+        end_date: $('#p-end').value,
+        budget: parseFloat($('#p-budget').value) || 0,
+        description: $('#p-desc').value
+    };
+    if (!data.project_name) { toast('请输入项目名称', 'error'); return; }
+    if (!data.project_number) { toast('请先生成项目编号', 'error'); return; }
+
+    const res = await api('/api/projects', { method: 'POST', body: data });
+    if (res && res.success) {
+        toast('项目创建成功');
+        hideModal('modal-main');
+        navigateTo('projects');
+    }
+}
+
+async function deleteProject(id) {
+    if (!confirm('确定删除该项目？')) return;
+    const res = await api(`/api/projects/${id}`, { method: 'DELETE' });
+    if (res && res.success) {
+        toast('项目已删除');
+        navigateTo('projects');
+    }
+}
+
+// ── 项目详情 ──────────────────────────────────────────────────
+registerPage('project-detail', async (el, params) => {
+    const pid = params.id;
+    const project = await api(`/api/projects/${pid}`);
+    if (!project) return;
+
+    el.innerHTML = `
+        <div class="page-header">
+            <div style="display:flex;align-items:center;gap:12px">
+                <button class="btn btn-sm" onclick="navigateTo('projects')">← 返回</button>
+                <div>
+                    <div class="greeting">${project.project_number} - ${project.project_name}</div>
+                    <div class="date">
+                        <span class="badge ${getBadgeClass(project.status)}">${project.status}</span>
+                        &nbsp; 客户: ${project.customer || '-'} &nbsp; 类型: ${project.type || '-'}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">项目经理</div>
+                <div class="stat-value" style="font-size:18px">${project.manager_name || '-'}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">预算</div>
+                <div class="stat-value" style="font-size:18px">¥${(project.budget || 0).toLocaleString()}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">开始日期</div>
+                <div class="stat-value" style="font-size:18px">${project.start_date || '-'}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">结束日期</div>
+                <div class="stat-value" style="font-size:18px">${project.end_date || '-'}</div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchProjectTab(this, 'files', ${pid})">📎 立项文件</div>
+            <div class="tab" onclick="switchProjectTab(this, 'reqs', ${pid})">📝 需求</div>
+            <div class="tab" onclick="switchProjectTab(this, 'draws', ${pid})">📐 图纸</div>
+            <div class="tab" onclick="switchProjectTab(this, 'boms', ${pid})">🔧 BOM</div>
+        </div>
+        <div id="project-tab-content"></div>
+    `;
+
+    switchProjectTab(el.querySelector('.tab.active'), 'files', pid);
+});
+
+async function switchProjectTab(tabEl, tab, pid) {
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    const content = $('#project-tab-content');
+
+    if (tab === 'files') {
+        const files = await api(`/api/projects/${pid}/files`);
+        content.innerHTML = `
+            <div class="dropzone" id="detail-dropzone"
+                 ondragover="event.preventDefault();this.classList.add('dragover')"
+                 ondragleave="this.classList.remove('dragover')"
+                 ondrop="handleDrop(event, ${pid})"
+                 onclick="uploadProjectFiles(${pid})"
+                 style="margin-bottom:16px;padding:24px">
+                <div class="icon" style="font-size:24px">📄</div>
+                <p style="font-size:13px;font-weight:500">点击或拖拽文件到此处上传</p>
+                <p style="font-size:11px;color:var(--text-muted)">支持 PDF、Office、图片等格式</p>
+            </div>
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <select class="form-select" style="width:160px" onchange="filterProjectFiles(${pid}, this.value)">
+                        <option value="">全部类别</option>
+                        <option value="立项文件">立项文件</option>
+                        <option value="合同文件">合同文件</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card">
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>文件名</th><th>版本</th><th>类别</th><th>上传者</th><th>上传时间</th><th>操作</th></tr></thead>
+                        <tbody id="files-tbody">
+                            ${(files || []).map(f => `
+                                <tr>
+                                    <td>${f.file_name}</td>
+                                    <td><span class="badge badge-info">V${f.version}</span></td>
+                                    <td>${f.category}</td>
+                                    <td>${f.uploader_name || '-'}</td>
+                                    <td>${formatDateTime(f.upload_time)}</td>
+                                    <td class="actions">
+                                        <button class="btn btn-sm" onclick="previewFile(${f.id}, '${f.file_name}')">查看</button>
+                                        <a class="btn btn-sm" href="/api/files/${f.id}/download">下载</a>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteFile(${f.id}, ${pid})">删除</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ${!files || files.length === 0 ? '<div class="empty-state"><div class="icon">📎</div><p>暂无文件</p></div>' : ''}
+            </div>
+        `;
+    } else if (tab === 'reqs') {
+        const reqs = await api(`/api/projects/${pid}/requirements`);
+        content.innerHTML = `
+            <div class="toolbar">
+                <div class="toolbar-right">
+                    <button class="btn btn-primary" onclick="showCreateReq(${pid})">+ 新建需求</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>需求ID</th><th>标题</th><th>需求人</th><th>需求时间</th><th>优先级</th><th>状态</th><th>版本</th><th>创建者</th><th>操作</th></tr></thead>
+                        <tbody>
+                            ${(reqs || []).map(r => `
+                                <tr>
+                                    <td style="font-weight:500;color:var(--accent)">${r.req_id}</td>
+                                    <td>${r.title}</td>
+                                    <td>${r.requester_name || r.creator_name || '-'}</td>
+                                    <td>${r.requirement_time ? formatDate(r.requirement_time) : '-'}</td>
+                                    <td><span class="badge ${r.priority === '高' ? 'badge-danger' : r.priority === '中' ? 'badge-warning' : 'badge-gray'}">${r.priority}</span></td>
+                                    <td><span class="badge ${getBadgeClass(r.status)}">${r.status}</span></td>
+                                    <td>V${r.version}</td>
+                                    <td>${r.creator_name || '-'}</td>
+                                    <td class="actions">
+                                        <button class="btn btn-sm" onclick="showReqChanges(${r.id})">变更</button>
+                                        ${(r.created_by === CURRENT_USER_ID || ['系统管理员','项目管理员'].includes(CURRENT_USER_ROLE)) ? `<button class="btn btn-sm btn-danger" onclick="deleteReq(${r.id}, ${pid})">删除</button>` : ''}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ${!reqs || reqs.length === 0 ? '<div class="empty-state"><div class="icon">📝</div><p>暂无需求</p></div>' : ''}
+            </div>
+        `;
+    } else if (tab === 'draws') {
+        const draws = await api(`/api/projects/${pid}/drawings`);
+        content.innerHTML = `
+            <div class="toolbar">
+                <div class="toolbar-right">
+                    <button class="btn btn-primary" onclick="showCreateDrawing(${pid})">+ 上传图纸</button>
+                </div>
+            </div>
+            <!-- 拖拽上传区 -->
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-body">
+                    <div class="dropzone" id="detail-drawing-dropzone"
+                         style="padding:20px"
+                         ondragover="event.preventDefault();this.classList.add('dragover')"
+                         ondragleave="this.classList.remove('dragover')"
+                         ondrop="handleDrawingDrop(event, ${pid})"
+                         onclick="triggerDrawingUpload(${pid})">
+                        <div class="icon" style="font-size:24px">📄</div>
+                        <p style="font-size:13px;font-weight:500">点击或拖拽图纸文件到此处上传</p>
+                        <p style="font-size:11px;color:var(--text-muted)">支持 PDF、DWG、STP、DXF 格式</p>
+                    </div>
+                    <input type="file" id="drawing-file-input" multiple
+                           accept=".pdf,.dwg,.stp,.step,.dxf" style="display:none"
+                           onchange="handleDrawingFileSelect(this, ${pid})">
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">图纸列表 (${draws ? draws.length : 0})</span>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>图号</th><th>名称</th><th>版本</th><th>文件格式</th><th>状态</th><th>创建者</th><th>操作</th></tr></thead>
+                        <tbody>
+                            ${(draws || []).map(d => {
+                                const ext = d.file_path ? d.file_path.split('.').pop().toUpperCase() : '-';
+                                return `
+                                <tr>
+                                    <td style="font-weight:500;color:var(--accent)">${d.drawing_number}</td>
+                                    <td>${d.drawing_name}</td>
+                                    <td><span class="badge badge-info">V${d.version}</span></td>
+                                    <td><span class="badge badge-gray">${ext}</span></td>
+                                    <td><span class="badge ${getBadgeClass(d.status)}">${d.status}</span></td>
+                                    <td>${d.creator_name || '-'}</td>
+                                    <td class="actions">
+                                        ${d.file_path ? `
+                                            <button class="btn btn-sm" onclick="previewDrawing(${d.id}, '${d.file_path}', '${d.drawing_name}')">预览</button>
+                                            <a class="btn btn-sm" href="/api/drawings/${d.id}/download">下载</a>
+                                        ` : ''}
+                                        <button class="btn btn-sm" onclick="showDrawingECO(${d.id})">ECO</button>
+                                        <button class="btn btn-sm" onclick="uploadNewVersion(${d.id}, ${pid})">新版本</button>
+                                    </td>
+                                </tr>
+                            `}).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ${!draws || draws.length === 0 ? '<div class="empty-state"><div class="icon">📐</div><p>暂无图纸</p></div>' : ''}
+            </div>
+        `;
+    } else if (tab === 'boms') {
+        const boms = await api(`/api/projects/${pid}/boms`);
+        content.innerHTML = `
+            <div class="toolbar">
+                <div class="toolbar-right">
+                    <button class="btn" onclick="showImportBOMDirect(${pid})">📥 导入BOM</button>
+                    <button class="btn btn-primary" onclick="createBOM(${pid})">+ 新建BOM</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">BOM版本列表 (${boms ? boms.length : 0})</span>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>版本</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
+                        <tbody>
+                            ${(boms || []).map(b => `
+                                <tr>
+                                    <td style="font-weight:500;color:var(--accent)">${b.version}</td>
+                                    <td><span class="badge ${getBadgeClass(b.status)}">${b.status}</span></td>
+                                    <td>${formatDateTime(b.created_at)}</td>
+                                    <td class="actions">
+                                        <button class="btn btn-sm" onclick="navigateTo('bom-detail', {id:${b.id}})">📋 查看/编辑</button>
+                                        <button class="btn btn-sm" onclick="showImportBOMToVersion(${b.id})">📥 导入</button>
+                                        <button class="btn btn-sm" onclick="duplicateBOM(${b.id}, ${pid})">复制版本</button>
+                                        <a class="btn btn-sm" href="/api/boms/${b.id}/export">⬇ 导出</a>
+                                        <button class="btn btn-sm" onclick="checkBOMConsistency(${b.id})">校验</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ${!boms || boms.length === 0 ? '<div class="empty-state"><div class="icon">🔧</div><p>暂无BOM，点击右上角按钮创建或导入</p></div>' : ''}
+            </div>
+        `;
+    }
+}
+
+async function uploadProjectFiles(pid) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.onchange = async () => {
+        await doUpload(input.files, pid);
+    };
+    input.click();
+}
+
+function triggerFileInput(pid) {
+    const input = $('#global-file-input');
+    if (input) {
+        input.dataset.pid = pid;
+        input.click();
+    }
+}
+
+function handleFileSelect(input, pid) {
+    if (input.files.length > 0) {
+        doUpload(input.files, pid);
+    }
+}
+
+function handleDrop(event, pid) {
+    event.preventDefault();
+    event.target.classList.remove('dragover');
+    const files = event.dataTransfer.files;
+    if (files.length > 0) {
+        doUpload(files, pid);
+    }
+}
+
+async function doUpload(files, pid) {
+    const formData = new FormData();
+    formData.append('category', '立项文件');
+    for (const file of files) {
+        formData.append('files', file);
+    }
+    const res = await fetch(`/api/projects/${pid}/files/upload`, {
+        method: 'POST', body: formData
+    });
+    const data = await res.json();
+    if (data.success) {
+        toast(`成功上传 ${data.uploaded.length} 个文件`);
+        // 刷新当前页面
+        if (currentPage === 'project-detail') {
+            navigateTo('project-detail', { id: pid });
+        } else {
+            filterFiles();
+        }
+    } else {
+        toast(data.error || '上传失败', 'error');
+    }
+}
+
+async function deleteFile(fid, pid) {
+    if (!confirm('确定删除此文件？')) return;
+    const res = await api(`/api/files/${fid}`, { method: 'DELETE' });
+    if (res && res.success) {
+        toast('文件已删除');
+        navigateTo('project-detail', { id: pid });
+    }
+}
+
+function showCreateReq(pid) {
+    const today = new Date().toISOString().split('T')[0];
+    $('#modal-title').textContent = '新建需求';
+    $('#modal-body').innerHTML = `
+        <div class="form-group">
+            <label class="form-label">需求标题 *</label>
+            <input type="text" class="form-input" id="req-title" required>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">需求人 *</label>
+                <input type="text" class="form-input" id="req-requester" value="" placeholder="请输入需求人姓名">
+            </div>
+            <div class="form-group">
+                <label class="form-label">需求时间</label>
+                <input type="date" class="form-input" id="req-time" value="${today}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">需求描述</label>
+            <textarea class="form-textarea" id="req-desc" placeholder="详细描述需求内容"></textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">优先级</label>
+            <select class="form-select" id="req-priority">
+                <option value="低">低</option>
+                <option value="中" selected>中</option>
+                <option value="高">高</option>
+            </select>
+        </div>
+    `;
+    $('#modal-footer').innerHTML = `
+        <button class="btn" onclick="hideModal('modal-main')">取消</button>
+        <button class="btn btn-primary" onclick="createReq(${pid})">创建</button>
+    `;
+    showModal('modal-main');
+}
+
+async function createReq(pid) {
+    const data = {
+        title: $('#req-title').value,
+        description: $('#req-desc').value,
+        priority: $('#req-priority').value,
+        requester_name: $('#req-requester').value,
+        requirement_time: $('#req-time').value
+    };
+    if (!data.title) { toast('请输入需求标题', 'error'); return; }
+    if (!data.requester_name) { toast('请输入需求人', 'error'); return; }
+    const res = await api(`/api/projects/${pid}/requirements`, { method: 'POST', body: data });
+    if (res && res.success) {
+        toast('需求创建成功');
+        hideModal('modal-main');
+        if (currentPage === 'project-detail') {
+            navigateTo('project-detail', { id: pid });
+        } else {
+            filterRequirements();
+        }
+    }
+}
+
+async function deleteReq(rid, pid) {
+    if (!confirm('确定删除此需求？')) return;
+    const res = await api(`/api/requirements/${rid}`, { method: 'DELETE' });
+    if (res && res.success) {
+        toast('需求已删除');
+        navigateTo('project-detail', { id: pid });
+    } else if (res && res.error) {
+        toast(res.error, 'error');
+    }
+}
+
+async function showReqChanges(rid) {
+    const changes = await api(`/api/requirements/${rid}/changes`);
+    $('#modal-title').textContent = '需求变更记录';
+    $('#modal-body').innerHTML = `
+        <div style="margin-bottom:16px">
+            <button class="btn btn-primary btn-sm" onclick="showCreateReqChange(${rid})">+ 提交变更</button>
+        </div>
+        ${(changes || []).map(c => `
+            <div style="padding:12px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px">
+                <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+                    <span class="badge ${getBadgeClass(c.status)}">${c.status}</span>
+                    <span style="font-size:12px;color:var(--text-muted)">${formatDateTime(c.created_at)}</span>
+                </div>
+                <div style="font-size:13px"><strong>原因:</strong> ${c.change_reason || '-'}</div>
+                <div style="font-size:13px;margin-top:4px"><strong>内容:</strong> ${c.change_content || '-'}</div>
+                <div style="font-size:13px;margin-top:4px"><strong>影响:</strong> ${c.impact || '-'}</div>
+            </div>
+        `).join('')}
+        ${!changes || changes.length === 0 ? '<div class="empty-state"><p>暂无变更记录</p></div>' : ''}
+    `;
+    $('#modal-footer').innerHTML = `<button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
+    showModal('modal-main');
+}
+
+function showCreateReqChange(rid) {
+    hideModal('modal-main');
+    setTimeout(() => {
+        $('#modal-title').textContent = '提交需求变更';
+        $('#modal-body').innerHTML = `
+            <div class="form-group">
+                <label class="form-label">变更原因</label>
+                <textarea class="form-textarea" id="chg-reason"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">变更内容</label>
+                <textarea class="form-textarea" id="chg-content"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">影响分析</label>
+                <textarea class="form-textarea" id="chg-impact"></textarea>
+            </div>
+        `;
+        $('#modal-footer').innerHTML = `
+            <button class="btn" onclick="hideModal('modal-main')">取消</button>
+            <button class="btn btn-primary" onclick="submitReqChange(${rid})">提交审批</button>
+        `;
+        showModal('modal-main');
+    }, 200);
+}
+
+async function submitReqChange(rid) {
+    const data = {
+        change_reason: $('#chg-reason').value,
+        change_content: $('#chg-content').value,
+        impact: $('#chg-impact').value
+    };
+    const res = await api(`/api/requirements/${rid}/changes`, { method: 'POST', body: data });
+    if (res && res.success) {
+        toast('变更已提交审批');
+        hideModal('modal-main');
+    }
+}
+
+function showCreateDrawing(pid) {
+    $('#modal-title').textContent = '上传图纸';
+    $('#modal-body').innerHTML = `
+        <div class="form-group">
+            <label class="form-label">图号 *</label>
+            <input type="text" class="form-input" id="dwg-number" placeholder="如: DWG-001">
+        </div>
+        <div class="form-group">
+            <label class="form-label">图纸名称 *</label>
+            <input type="text" class="form-input" id="dwg-name" placeholder="输入图纸名称">
+        </div>
+        <div class="form-group">
+            <label class="form-label">图纸文件</label>
+            <div class="dropzone" id="dwg-upload-zone"
+                 style="padding:20px;margin-top:6px"
+                 onclick="$('#dwg-file').click()">
+                <div class="icon" style="font-size:24px">📄</div>
+                <p style="font-size:13px;font-weight:500">点击选择文件</p>
+                <p style="font-size:11px;color:var(--text-muted)">支持 PDF、DWG、STP、DXF 格式</p>
+            </div>
+            <input type="file" class="form-input" id="dwg-file" accept=".pdf,.dwg,.stp,.step,.dxf" style="display:none"
+                   onchange="$('#dwg-file-name').textContent = this.files[0]?.name || ''">
+            <div id="dwg-file-name" style="font-size:12px;color:var(--accent);margin-top:6px"></div>
+        </div>
+    `;
+    $('#modal-footer').innerHTML = `
+        <button class="btn" onclick="hideModal('modal-main')">取消</button>
+        <button class="btn btn-primary" onclick="createDrawing(${pid})">上传</button>
+    `;
+    showModal('modal-main');
+}
+
+async function createDrawing(pid) {
+    const formData = new FormData();
+    formData.append('drawing_number', $('#dwg-number').value);
+    formData.append('drawing_name', $('#dwg-name').value);
+    const fileInput = $('#dwg-file');
+    if (fileInput.files[0]) formData.append('file', fileInput.files[0]);
+
+    if (!$('#dwg-number').value || !$('#dwg-name').value) {
+        toast('请填写图号和名称', 'error'); return;
+    }
+
+    const res = await fetch(`/api/projects/${pid}/drawings`, {
+        method: 'POST', body: formData
+    });
+    const data = await res.json();
+    if (data.success) {
+        toast('图纸上传成功');
+        hideModal('modal-main');
+        navigateTo('project-detail', { id: pid });
+    } else {
+        toast(data.error || '上传失败', 'error');
+    }
+}
+
+async function showDrawingECO(did) {
+    const ecos = await api(`/api/drawings/${did}/ecos`);
+    $('#modal-title').textContent = '图纸ECO变更记录';
+    $('#modal-body').innerHTML = `
+        <div style="margin-bottom:16px">
+            <button class="btn btn-primary btn-sm" onclick="showCreateECO(${did})">+ 发起ECO</button>
+        </div>
+        ${(ecos || []).map(e => `
+            <div style="padding:12px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px">
+                <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+                    <span class="badge ${getBadgeClass(e.status)}">${e.status}</span>
+                    <span style="font-size:12px;color:var(--text-muted)">${formatDateTime(e.created_at)}</span>
+                </div>
+                <div style="font-size:13px"><strong>变更说明:</strong> ${e.change_description || '-'}</div>
+                <div style="font-size:13px;margin-top:4px"><strong>原因:</strong> ${e.reason || '-'}</div>
+            </div>
+        `).join('')}
+        ${!ecos || ecos.length === 0 ? '<div class="empty-state"><p>暂无ECO记录</p></div>' : ''}
+    `;
+    $('#modal-footer').innerHTML = `<button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
+    showModal('modal-main');
+}
+
+function showCreateECO(did) {
+    hideModal('modal-main');
+    setTimeout(() => {
+        $('#modal-title').textContent = '发起图纸ECO';
+        $('#modal-body').innerHTML = `
+            <div class="form-group">
+                <label class="form-label">变更说明</label>
+                <textarea class="form-textarea" id="eco-desc"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">变更原因</label>
+                <textarea class="form-textarea" id="eco-reason"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">互换性分析</label>
+                <textarea class="form-textarea" id="eco-inter"></textarea>
+            </div>
+        `;
+        $('#modal-footer').innerHTML = `
+            <button class="btn" onclick="hideModal('modal-main')">取消</button>
+            <button class="btn btn-primary" onclick="submitECO(${did})">提交审批</button>
+        `;
+        showModal('modal-main');
+    }, 200);
+}
+
+async function submitECO(did) {
+    const data = {
+        change_description: $('#eco-desc').value,
+        reason: $('#eco-reason').value,
+        interchangeability: $('#eco-inter').value
+    };
+    const res = await api(`/api/drawings/${did}/ecos`, { method: 'POST', body: data });
+    if (res && res.success) {
+        toast('ECO已提交审批');
+        hideModal('modal-main');
+    }
+}
+
+async function uploadNewVersion(did, pid) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.dwg,.stp,.step,.dxf';
+    input.onchange = async () => {
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+        const res = await fetch(`/api/drawings/${did}/upload-new-version`, {
+            method: 'POST', body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            toast(`新版本 V${data.version} 上传成功`);
+            navigateTo('project-detail', { id: pid });
+        } else {
+            toast(data.error || '上传失败', 'error');
+        }
+    };
+    input.click();
+}
+
+// ── 图纸在线预览 ──────────────────────────────────────────────
+function previewDrawing(did, filePath, drawingName) {
+    const ext = filePath.split('.').pop().toLowerCase();
+    const previewUrl = `/api/drawings/${did}/preview`;
+
+    if (ext === 'pdf') {
+        // PDF: 新标签页查看
+        window.open(previewUrl, '_blank');
+    } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
+        // 图片: 弹窗查看
+        $('#modal-title').textContent = drawingName;
+        $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" style="max-width:100%;max-height:70vh;border-radius:var(--radius)"></div>`;
+        $('#modal-footer').innerHTML = `<a class="btn" href="/api/drawings/${did}/download">下载原文件</a> <button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
+        showModal('modal-main');
+    } else if (['dwg', 'stp', 'step', 'dxf'].includes(ext)) {
+        // DWG/STP: 提供下载（浏览器无法直接渲染）
+        $('#modal-title').textContent = `图纸预览 - ${drawingName}`;
+        $('#modal-body').innerHTML = `
+            <div style="text-align:center;padding:24px">
+                <div style="font-size:48px;margin-bottom:16px">📐</div>
+                <h3 style="margin-bottom:8px">${drawingName}</h3>
+                <p style="color:var(--text-muted);margin-bottom:4px">文件格式: <strong>${ext.toUpperCase()}</strong></p>
+                <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px">
+                    ${ext === 'dwg' ? 'DWG 格式需要使用 AutoCAD 或兼容软件打开' : 'STP/STEP 格式需要使用 3D CAD 软件打开'}
+                </p>
+                <a class="btn btn-primary" href="/api/drawings/${did}/download" style="margin-right:8px">⬇ 下载文件</a>
+            </div>
+        `;
+        $('#modal-footer').innerHTML = `<button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
+        showModal('modal-main');
+    } else {
+        // 其他格式: 尝试新标签页
+        window.open(previewUrl, '_blank');
+    }
+}
+
+// ── 图纸批量上传 ──────────────────────────────────────────────
+function triggerDrawingUpload(pid) {
+    $('#drawing-file-input').click();
+}
+
+function handleDrawingFileSelect(input, pid) {
+    if (input.files.length > 0) {
+        batchUploadDrawings(input.files, pid);
+    }
+}
+
+function handleDrawingDrop(event, pid) {
+    event.preventDefault();
+    event.target.classList.remove('dragover');
+    const files = event.dataTransfer.files;
+    if (files.length > 0) {
+        batchUploadDrawings(files, pid);
+    }
+}
+
+async function batchUploadDrawings(fileList, pid) {
+    let successCount = 0;
+    let failCount = 0;
+    for (const file of fileList) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['pdf', 'dwg', 'stp', 'step', 'dxf'].includes(ext)) {
+            toast(`跳过不支持的格式: ${file.name}`, 'warning');
+            failCount++;
+            continue;
+        }
+        const drawingName = file.name.replace(/\.[^.]+$/, '');
+        const formData = new FormData();
+        formData.append('drawing_number', `DWG-${Date.now()}-${successCount}`);
+        formData.append('drawing_name', drawingName);
+        formData.append('file', file);
+
+        const res = await fetch(`/api/projects/${pid}/drawings`, {
+            method: 'POST', body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            successCount++;
+        } else {
+            toast(`${file.name}: ${data.error || '上传失败'}`, 'error');
+            failCount++;
+        }
+    }
+    if (successCount > 0) {
+        toast(`成功上传 ${successCount} 个图纸文件`);
+        filterDrawings();
+    }
+}
+
+async function createBOM(pid) {
+    const res = await api(`/api/projects/${pid}/boms`, { method: 'POST', body: { version: 'V1.0' } });
+    if (res && res.success) {
+        toast('BOM创建成功');
+        navigateTo('bom-detail', { id: res.id });
+    }
+}
+
+async function duplicateBOM(bid, pid) {
+    const res = await api(`/api/boms/${bid}/duplicate`, { method: 'POST' });
+    if (res && res.success) {
+        toast(`BOM ${res.version} 创建成功`);
+        navigateTo('project-detail', { id: pid });
+    }
+}
+
+async function checkBOMConsistency(bid) {
+    const res = await api(`/api/boms/${bid}/check-consistency`, { method: 'POST' });
+    if (res) {
+        if (res.issues.length === 0) {
+            toast(`校验通过，共检查 ${res.total_checked} 项`);
+        } else {
+            toast(`发现 ${res.issues.length} 个问题，请检查`, 'warning');
+        }
+    }
+}
+
+// ── BOM详情编辑 ──────────────────────────────────────────────
+registerPage('bom-detail', async (el, params) => {
+    const bid = params.id;
+    const items = await api(`/api/boms/${bid}/items`);
+
+    el.innerHTML = `
+        <div class="page-header">
+            <div style="display:flex;align-items:center;gap:12px">
+                <button class="btn btn-sm" onclick="history.back()">← 返回</button>
+                <div>
+                    <div class="greeting">🔧 BOM编辑</div>
+                    <div class="date">物料清单管理 - 共 ${items ? items.length : 0} 项物料</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <input type="text" class="search-input" placeholder="搜索物料名称或编码..." id="bom-search"
+                       oninput="searchBOMItems(this.value)">
+            </div>
+            <div class="toolbar-right">
+                <button class="btn btn-primary" onclick="showAddBOMItem(${bid})">+ 添加物料</button>
+                <button class="btn" onclick="showImportBOMToVersion(${bid})">📥 批量导入</button>
+                <button class="btn" onclick="checkBOMConsistency(${bid})">🔍 一致性校验</button>
+                <a class="btn" href="/api/boms/${bid}/export">⬇ 导出Excel</a>
+            </div>
+        </div>
+
+        <div class="stats-grid" style="margin-bottom:16px">
+            <div class="stat-card">
+                <div class="stat-label">📦 物料总数</div>
+                <div class="stat-value" style="font-size:22px">${items ? items.length : 0}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">✅ 校验正常</div>
+                <div class="stat-value" style="font-size:22px;color:var(--accent)">${items ? items.filter(i => i.check_status === '正常').length : 0}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">⚠️ 待核查</div>
+                <div class="stat-value" style="font-size:22px;color:var(--warning)">${items ? items.filter(i => i.check_status === '待核查').length : 0}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">❌ 异常</div>
+                <div class="stat-value" style="font-size:22px;color:var(--danger)">${items ? items.filter(i => i.check_status === '异常').length : 0}</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">物料清单</span>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>序号</th>
+                            <th>物料编码</th>
+                            <th>名称</th>
+                            <th>规格</th>
+                            <th>单位</th>
+                            <th>数量</th>
+                            <th>位置</th>
+                            <th>材质</th>
+                            <th>关联图纸</th>
+                            <th>校验状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bom-items-tbody">
+                        ${(items || []).map((item, idx) => `
+                            <tr style="${item.check_status === '异常' ? 'background:#FEF2F2' : item.check_status === '待核查' ? 'background:#FFFBEB' : ''}"
+                                data-name="${item.name}" data-code="${item.material_code}">
+                                <td>${idx + 1}</td>
+                                <td style="font-weight:500">${item.material_code}</td>
+                                <td>${item.name}</td>
+                                <td>${item.spec || '-'}</td>
+                                <td>${item.unit}</td>
+                                <td>${item.quantity}</td>
+                                <td>${item.position || '-'}</td>
+                                <td>${item.material || '-'}</td>
+                                <td>${item.drawing_number || '-'}</td>
+                                <td>${item.check_status ? `<span class="badge ${getBadgeClass(item.check_status)}">${item.check_status}</span>` : '-'}</td>
+                                <td class="actions">
+                                    <button class="btn btn-sm" onclick="editBOMItem(${JSON.stringify(item).replace(/"/g, '&quot;')}, ${bid})">编辑</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteBOMItem(${item.id}, ${bid})">删除</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            ${!items || items.length === 0 ? '<div class="empty-state"><div class="icon">🔧</div><p>暂无物料，点击上方按钮添加或导入</p></div>' : ''}
+        </div>
+    `;
+});
+
+function searchBOMItems(query) {
+    const q = query.toLowerCase();
+    $$('#bom-items-tbody tr').forEach(tr => {
+        const name = (tr.dataset.name || '').toLowerCase();
+        const code = (tr.dataset.code || '').toLowerCase();
+        tr.style.display = (name.includes(q) || code.includes(q)) ? '' : 'none';
+    });
+}
+
+function showAddBOMItem(bid) {
+    $('#modal-title').textContent = '添加物料';
+    $('#modal-body').innerHTML = `
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">物料编码 (留空自动生成)</label>
+                <input type="text" class="form-input" id="bi-code" placeholder="自动生成">
+            </div>
+            <div class="form-group">
+                <label class="form-label">名称 *</label>
+                <input type="text" class="form-input" id="bi-name" required placeholder="物料名称">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">规格型号</label>
+                <input type="text" class="form-input" id="bi-spec" placeholder="如: M10x30">
+            </div>
+            <div class="form-group">
+                <label class="form-label">单位</label>
+                <input type="text" class="form-input" id="bi-unit" value="个">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">数量</label>
+                <input type="number" class="form-input" id="bi-qty" value="1" min="0" step="0.01">
+            </div>
+            <div class="form-group">
+                <label class="form-label">位号/位置</label>
+                <input type="text" class="form-input" id="bi-pos" placeholder="如: J1, PCB-A3">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">材质/材料</label>
+            <input type="text" class="form-input" id="bi-mat" placeholder="如: 不锈钢304, ABS塑料">
+        </div>
+    `;
+    $('#modal-footer').innerHTML = `
+        <button class="btn" onclick="hideModal('modal-main')">取消</button>
+        <button class="btn btn-primary" onclick="addBOMItem(${bid})">添加</button>
+        <button class="btn" onclick="addBOMItemAndContinue(${bid})">添加并继续</button>
+    `;
+    showModal('modal-main');
+    // 自动聚焦名称输入框
+    setTimeout(() => $('#bi-name')?.focus(), 100);
+}
+
+async function addBOMItemAndContinue(bid) {
+    const success = await doAddBOMItem(bid);
+    if (success) {
+        // 清空表单继续添加
+        $('#bi-name').value = '';
+        $('#bi-spec').value = '';
+        $('#bi-qty').value = '1';
+        $('#bi-pos').value = '';
+        $('#bi-mat').value = '';
+        $('#bi-name').focus();
+    }
+}
+
+async function doAddBOMItem(bid) {
+    const data = {
+        material_code: $('#bi-code').value,
+        name: $('#bi-name').value,
+        spec: $('#bi-spec').value,
+        unit: $('#bi-unit').value,
+        quantity: parseFloat($('#bi-qty').value) || 1,
+        position: $('#bi-pos').value,
+        material: $('#bi-mat').value
+    };
+    if (!data.name) { toast('请输入物料名称', 'error'); return false; }
+    const res = await api(`/api/boms/${bid}/items`, { method: 'POST', body: data });
+    if (res && res.success) {
+        toast('物料添加成功');
+        return true;
+    }
+    return false;
+}
+
+async function addBOMItem(bid) {
+    const success = await doAddBOMItem(bid);
+    if (success) {
+        hideModal('modal-main');
+        navigateTo('bom-detail', { id: bid });
+    }
+}
+
+function editBOMItem(item, bid) {
+    $('#modal-title').textContent = '编辑物料';
+    $('#modal-body').innerHTML = `
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">物料编码</label>
+                <input type="text" class="form-input" id="bi-code" value="${item.material_code}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">名称 *</label>
+                <input type="text" class="form-input" id="bi-name" value="${item.name}" required>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">规格型号</label>
+                <input type="text" class="form-input" id="bi-spec" value="${item.spec || ''}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">单位</label>
+                <input type="text" class="form-input" id="bi-unit" value="${item.unit}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">数量</label>
+                <input type="number" class="form-input" id="bi-qty" value="${item.quantity}" min="0" step="0.01">
+            </div>
+            <div class="form-group">
+                <label class="form-label">位号/位置</label>
+                <input type="text" class="form-input" id="bi-pos" value="${item.position || ''}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">材质/材料</label>
+            <input type="text" class="form-input" id="bi-mat" value="${item.material || ''}">
+        </div>
+    `;
+    $('#modal-footer').innerHTML = `
+        <button class="btn" onclick="hideModal('modal-main')">取消</button>
+        <button class="btn btn-primary" onclick="updateBOMItem(${item.id}, ${bid})">保存</button>
+    `;
+    showModal('modal-main');
+}
+
+async function updateBOMItem(itemId, bid) {
+    const data = {
+        material_code: $('#bi-code').value,
+        name: $('#bi-name').value,
+        spec: $('#bi-spec').value,
+        unit: $('#bi-unit').value,
+        quantity: parseFloat($('#bi-qty').value) || 1,
+        position: $('#bi-pos').value,
+        material: $('#bi-mat').value
+    };
+    const res = await api(`/api/bom-items/${itemId}`, { method: 'PUT', body: data });
+    if (res && res.success) {
+        toast('物料已更新');
+        hideModal('modal-main');
+        navigateTo('bom-detail', { id: bid });
+    }
+}
+
+async function deleteBOMItem(itemId, bid) {
+    if (!confirm('确定删除此物料？')) return;
+    const res = await api(`/api/bom-items/${itemId}`, { method: 'DELETE' });
+    if (res && res.success) {
+        toast('物料已删除');
+        navigateTo('bom-detail', { id: bid });
+    }
+}
+
+// ── 立项文件库 ──────────────────────────────────────────────
+registerPage('files', async (el) => {
+    const projects = await api('/api/projects');
+    el.innerHTML = `
+        <div class="page-header">
+            <div class="greeting">📎 立项文件库</div>
+            <div class="date">管理所有项目文件</div>
+        </div>
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <select class="form-select" id="file-project-filter" onchange="filterFiles()" style="width:200px">
+                    <option value="">选择项目</option>
+                    ${(projects || []).map(p => `<option value="${p.id}">${p.project_number} - ${p.project_name}</option>`).join('')}
+                </select>
+            </div>
+        </div>
+        <div id="files-list-content">
+            <div class="empty-state"><div class="icon">📎</div><p>请先选择一个项目</p></div>
+        </div>
+    `;
+});
+
+async function filterFiles() {
+    const pid = $('#file-project-filter').value;
+    if (!pid) return;
+    const files = await api(`/api/projects/${pid}/files`);
+    const container = $('#files-list-content');
+
+    const fileRows = (files || []).map(f => `
+        <tr>
+            <td>${f.file_name}</td>
+            <td><span class="badge badge-info">V${f.version}</span></td>
+            <td>${f.category}</td>
+            <td>${f.uploader_name || '-'}</td>
+            <td>${formatDateTime(f.upload_time)}</td>
+            <td class="actions">
+                <button class="btn btn-sm" onclick="previewFile(${f.id}, '${f.file_name}')">查看</button>
+                <a class="btn btn-sm" href="/api/files/${f.id}/download">下载</a>
+            </td>
+        </tr>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-body">
+                <div class="dropzone" id="global-dropzone"
+                     ondragover="event.preventDefault();this.classList.add('dragover')"
+                     ondragleave="this.classList.remove('dragover')"
+                     ondrop="handleDrop(event, ${pid})"
+                     onclick="triggerFileInput(${pid})">
+                    <div class="icon">📄</div>
+                    <p style="font-size:14px;font-weight:500">点击或拖拽文件到此处上传</p>
+                    <p style="font-size:12px;color:var(--text-muted);margin-top:4px">支持 PDF、Office、图片等格式，可批量上传</p>
+                </div>
+                <input type="file" id="global-file-input" multiple style="display:none" onchange="handleFileSelect(this, ${pid})">
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">文件列表 (${files ? files.length : 0})</span>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>文件名</th><th>版本</th><th>类别</th><th>上传者</th><th>上传时间</th><th>操作</th></tr></thead>
+                    <tbody>
+                        ${fileRows}
+                    </tbody>
+                </table>
+            </div>
+            ${!files || files.length === 0 ? '<div class="empty-state"><p>暂无文件</p></div>' : ''}
+        </div>
+    `;
+}
+
+// ── 需求管理（全局） ────────────────────────────────────────
+registerPage('requirements', async (el) => {
+    const projects = await api('/api/projects');
+    el.innerHTML = `
+        <div class="page-header">
+            <div class="greeting">📝 需求管理</div>
+            <div class="date">按项目编号管理需求，支持创建、查看和删除</div>
+        </div>
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <select class="form-select" id="req-project-filter" onchange="filterRequirements()" style="width:240px">
+                    <option value="">-- 选择项目编号 --</option>
+                    ${(projects || []).map(p => `<option value="${p.id}">${p.project_number} - ${p.project_name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="toolbar-right">
+                <button class="btn btn-primary" id="btn-create-req-global" style="display:none" onclick="showCreateReqGlobal()">+ 新建需求</button>
+            </div>
+        </div>
+        <div id="req-list-content">
+            <div class="empty-state"><div class="icon">📝</div><p>请先选择一个项目</p></div>
+        </div>
+    `;
+});
+
+async function showCreateReqGlobal() {
+    const pid = $('#req-project-filter').value;
+    if (!pid) { toast('请先选择项目', 'error'); return; }
+    showCreateReq(pid);
+}
+
+// 当前登录用户ID（由后端注入）
+const CURRENT_USER_ID = {{ session.user_id | default('null') }};
+const CURRENT_USER_ROLE = '{{ session.role | default("") }}';
+
+async function filterRequirements() {
+    const pid = $('#req-project-filter').value;
+    if (!pid) {
+        $('#btn-create-req-global').style.display = 'none';
+        $('#req-list-content').innerHTML = '<div class="empty-state"><div class="icon">📝</div><p>请先选择一个项目</p></div>';
+        return;
+    }
+    $('#btn-create-req-global').style.display = '';
+    const reqs = await api(`/api/projects/${pid}/requirements`);
+    const container = $('#req-list-content');
+    if (!reqs || reqs.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">📝</div><p>该项目暂无需求，点击右上角按钮创建</p></div>';
+        return;
+    }
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">需求列表 (${reqs.length})</span>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>需求ID</th><th>标题</th><th>需求人</th><th>需求时间</th><th>优先级</th><th>状态</th><th>版本</th><th>操作</th></tr></thead>
+                    <tbody>
+                        ${reqs.map(r => `
+                            <tr>
+                                <td style="font-weight:500;color:var(--accent)">${r.req_id}</td>
+                                <td>${r.title}</td>
+                                <td>${r.requester_name || r.creator_name || '-'}</td>
+                                <td>${r.requirement_time ? formatDate(r.requirement_time) : '-'}</td>
+                                <td><span class="badge ${r.priority === '高' ? 'badge-danger' : r.priority === '中' ? 'badge-warning' : 'badge-gray'}">${r.priority}</span></td>
+                                <td><span class="badge ${getBadgeClass(r.status)}">${r.status}</span></td>
+                                <td>V${r.version}</td>
+                                <td class="actions">
+                                    <button class="btn btn-sm" onclick="showReqChanges(${r.id})">变更记录</button>
+                                    ${(r.created_by === CURRENT_USER_ID || ['系统管理员','项目管理员'].includes(CURRENT_USER_ROLE)) ? `<button class="btn btn-sm btn-danger" onclick="deleteReqFromList(${r.id}, ${pid})">删除</button>` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+async function deleteReqFromList(rid, pid) {
+    if (!confirm('确定删除此需求？')) return;
+    const res = await api(`/api/requirements/${rid}`, { method: 'DELETE' });
+    if (res && res.success) {
+        toast('需求已删除');
+        filterRequirements();
+    } else if (res && res.error) {
+        toast(res.error, 'error');
+    }
+}
+
+// ── 图纸管理（全局） ────────────────────────────────────────
+registerPage('drawings', async (el) => {
+    const projects = await api('/api/projects');
+    el.innerHTML = `
+        <div class="page-header">
+            <div class="greeting">📐 图纸管理</div>
+            <div class="date">按项目编号管理图纸，支持 PDF/DWG/STP 格式上传与在线预览</div>
+        </div>
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <select class="form-select" id="draw-project-filter" onchange="filterDrawings()" style="width:240px">
+                    <option value="">-- 选择项目编号 --</option>
+                    ${(projects || []).map(p => `<option value="${p.id}">${p.project_number} - ${p.project_name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="toolbar-right">
+                <button class="btn btn-primary" id="btn-upload-drawing-global" style="display:none" onclick="showUploadDrawingGlobal()">+ 上传图纸</button>
+            </div>
+        </div>
+        <div id="draw-list-content">
+            <div class="empty-state"><div class="icon">📐</div><p>请先选择一个项目</p></div>
+        </div>
+    `;
+});
+
+async function showUploadDrawingGlobal() {
+    const pid = $('#draw-project-filter').value;
+    if (!pid) { toast('请先选择项目', 'error'); return; }
+    showCreateDrawing(pid);
+}
+
+async function filterDrawings() {
+    const pid = $('#draw-project-filter').value;
+    if (!pid) {
+        $('#btn-upload-drawing-global').style.display = 'none';
+        $('#draw-list-content').innerHTML = '<div class="empty-state"><div class="icon">📐</div><p>请先选择一个项目</p></div>';
+        return;
+    }
+    $('#btn-upload-drawing-global').style.display = '';
+    const draws = await api(`/api/projects/${pid}/drawings`);
+    const container = $('#draw-list-content');
+    if (!draws || draws.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">📐</div><p>该项目暂无图纸，点击右上角按钮上传</p></div>';
+        return;
+    }
+    container.innerHTML = `
+        <!-- 批量上传区 -->
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-body">
+                <div class="dropzone" id="drawing-dropzone"
+                     ondragover="event.preventDefault();this.classList.add('dragover')"
+                     ondragleave="this.classList.remove('dragover')"
+                     ondrop="handleDrawingDrop(event, ${pid})"
+                     onclick="triggerDrawingUpload(${pid})">
+                    <div class="icon">📄</div>
+                    <p style="font-size:14px;font-weight:500">点击或拖拽图纸文件到此处批量上传</p>
+                    <p style="font-size:12px;color:var(--text-muted);margin-top:4px">支持 PDF、DWG、STP 格式</p>
+                </div>
+                <input type="file" id="drawing-file-input" multiple
+                       accept=".pdf,.dwg,.stp,.step,.dxf" style="display:none"
+                       onchange="handleDrawingFileSelect(this, ${pid})">
+            </div>
+        </div>
+        <!-- 图纸列表 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">图纸列表 (${draws.length})</span>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>图号</th><th>名称</th><th>版本</th><th>文件格式</th><th>状态</th><th>创建者</th><th>操作</th></tr></thead>
+                    <tbody>
+                        ${draws.map(d => {
+                            const ext = d.file_path ? d.file_path.split('.').pop().toUpperCase() : '-';
+                            return `
+                            <tr>
+                                <td style="font-weight:500;color:var(--accent)">${d.drawing_number}</td>
+                                <td>${d.drawing_name}</td>
+                                <td><span class="badge badge-info">V${d.version}</span></td>
+                                <td><span class="badge badge-gray">${ext}</span></td>
+                                <td><span class="badge ${getBadgeClass(d.status)}">${d.status}</span></td>
+                                <td>${d.creator_name || '-'}</td>
+                                <td class="actions">
+                                    ${d.file_path ? `
+                                        <button class="btn btn-sm" onclick="previewDrawing(${d.id}, '${d.file_path}', '${d.drawing_name}')">预览</button>
+                                        <a class="btn btn-sm" href="/api/drawings/${d.id}/download">下载</a>
+                                    ` : ''}
+                                    <button class="btn btn-sm" onclick="showDrawingECO(${d.id})">ECO</button>
+                                    <button class="btn btn-sm" onclick="uploadNewVersion(${d.id}, ${pid})">新版本</button>
+                                </td>
+                            </tr>
+                        `}).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+// ── BOM管理（全局） ──────────────────────────────────────────
+registerPage('bom', async (el) => {
+    const projects = await api('/api/projects');
+    el.innerHTML = `
+        <div class="page-header">
+            <div class="greeting">🔧 BOM管理</div>
+            <div class="date">按项目编号管理物料清单，支持录入、导入、查看和导出</div>
+        </div>
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <select class="form-select" id="bom-project-filter" onchange="filterBOMs()" style="width:240px">
+                    <option value="">-- 选择项目编号 --</option>
+                    ${(projects || []).map(p => `<option value="${p.id}">${p.project_number} - ${p.project_name}</option>`).join('')}
+                </select>
+            </div>
+            <div class="toolbar-right">
+                <button class="btn" id="btn-import-bom" style="display:none" onclick="showImportBOM()">📥 导入BOM</button>
+                <button class="btn btn-primary" id="btn-create-bom-global" style="display:none" onclick="createBOMGlobal()">+ 新建BOM</button>
+            </div>
+        </div>
+        <div id="bom-list-content">
+            <div class="empty-state"><div class="icon">🔧</div><p>请先选择一个项目</p></div>
+        </div>
+    `;
+});
+
+async function createBOMGlobal() {
+    const pid = $('#bom-project-filter').value;
+    if (!pid) { toast('请先选择项目', 'error'); return; }
+    createBOM(pid);
+}
+
+async function filterBOMs() {
+    const pid = $('#bom-project-filter').value;
+    if (!pid) {
+        $('#btn-import-bom').style.display = 'none';
+        $('#btn-create-bom-global').style.display = 'none';
+        $('#bom-list-content').innerHTML = '<div class="empty-state"><div class="icon">🔧</div><p>请先选择一个项目</p></div>';
+        return;
+    }
+    $('#btn-import-bom').style.display = '';
+    $('#btn-create-bom-global').style.display = '';
+    const boms = await api(`/api/projects/${pid}/boms`);
+    const container = $('#bom-list-content');
+    if (!boms || boms.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">🔧</div><p>该项目暂无BOM，点击右上角按钮创建或导入</p></div>';
+        return;
+    }
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">BOM版本列表 (${boms.length})</span>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>版本</th><th>状态</th><th>物料数</th><th>创建时间</th><th>操作</th></tr></thead>
+                    <tbody>
+                        ${boms.map(b => `
+                            <tr>
+                                <td style="font-weight:500;color:var(--accent)">${b.version}</td>
+                                <td><span class="badge ${getBadgeClass(b.status)}">${b.status}</span></td>
+                                <td>-</td>
+                                <td>${formatDateTime(b.created_at)}</td>
+                                <td class="actions">
+                                    <button class="btn btn-sm" onclick="navigateTo('bom-detail', {id:${b.id}})">📋 查看/编辑</button>
+                                    <button class="btn btn-sm" onclick="showImportBOMToVersion(${b.id})">📥 导入</button>
+                                    <button class="btn btn-sm" onclick="duplicateBOM(${b.id}, ${pid})">复制版本</button>
+                                    <a class="btn btn-sm" href="/api/boms/${b.id}/export">⬇ 导出Excel</a>
+                                    <button class="btn btn-sm" onclick="checkBOMConsistency(${b.id})">校验</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+// ── BOM导入 ──────────────────────────────────────────────────
+function showImportBOM() {
+    const pid = $('#bom-project-filter').value;
+    if (!pid) { toast('请先选择项目', 'error'); return; }
+    // 先创建BOM再导入
+    showImportBOMDirect(pid);
+}
+
+function showImportBOMDirect(pid) {
+    $('#modal-title').textContent = '导入BOM物料';
+    $('#modal-body').innerHTML = `
+        <div style="margin-bottom:16px">
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+                从 CSV 或 Excel 文件导入物料清单。文件应包含以下列：<br>
+                <strong>名称(必须)</strong>、物料编码、规格、单位、数量、位置、材质
+            </p>
+            <div class="dropzone" id="bom-import-zone" style="padding:20px"
+                 onclick="$('#bom-import-file').click()">
+                <div class="icon" style="font-size:24px">📥</div>
+                <p style="font-size:13px;font-weight:500">点击选择文件</p>
+                <p style="font-size:11px;color:var(--text-muted)">支持 CSV、XLSX 格式</p>
+            </div>
+            <input type="file" id="bom-import-file" accept=".csv,.xlsx,.xls" style="display:none"
+                   onchange="$('#bom-import-filename').textContent = this.files[0]?.name || ''">
+            <div id="bom-import-filename" style="font-size:12px;color:var(--accent);margin-top:6px"></div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">BOM版本号 (留空自动创建)</label>
+            <input type="text" class="form-input" id="bom-import-version" placeholder="如: V1.0">
+        </div>
+    `;
+    $('#modal-footer').innerHTML = `
+        <button class="btn" onclick="hideModal('modal-main')">取消</button>
+        <button class="btn btn-primary" onclick="doImportBOM(${pid})">开始导入</button>
+    `;
+    showModal('modal-main');
+}
+
+function showImportBOMToVersion(bid) {
+    $('#modal-title').textContent = '导入BOM物料到当前版本';
+    $('#modal-body').innerHTML = `
+        <div style="margin-bottom:16px">
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+                从 CSV 或 Excel 文件导入物料清单。文件应包含以下列：<br>
+                <strong>名称(必须)</strong>、物料编码、规格、单位、数量、位置、材质
+            </p>
+            <div class="dropzone" id="bom-import-zone" style="padding:20px"
+                 onclick="$('#bom-import-file').click()">
+                <div class="icon" style="font-size:24px">📥</div>
+                <p style="font-size:13px;font-weight:500">点击选择文件</p>
+                <p style="font-size:11px;color:var(--text-muted)">支持 CSV、XLSX 格式</p>
+            </div>
+            <input type="file" id="bom-import-file" accept=".csv,.xlsx,.xls" style="display:none"
+                   onchange="$('#bom-import-filename').textContent = this.files[0]?.name || ''">
+            <div id="bom-import-filename" style="font-size:12px;color:var(--accent);margin-top:6px"></div>
+        </div>
+    `;
+    $('#modal-footer').innerHTML = `
+        <button class="btn" onclick="hideModal('modal-main')">取消</button>
+        <button class="btn btn-primary" onclick="doImportBOMToVersion(${bid})">开始导入</button>
+    `;
+    showModal('modal-main');
+}
+
+async function doImportBOM(pid) {
+    const fileInput = $('#bom-import-file');
+    if (!fileInput.files[0]) { toast('请选择文件', 'error'); return; }
+
+    const version = $('#bom-import-version').value || 'V1.0';
+    // 先创建BOM
+    const bomRes = await api(`/api/projects/${pid}/boms`, { method: 'POST', body: { version } });
+    if (!bomRes || !bomRes.success) return;
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    const res = await fetch(`/api/boms/${bomRes.id}/import`, {
+        method: 'POST', body: formData
+    });
+    const data = await res.json();
+    if (data.success) {
+        toast(`导入成功: ${data.imported} 条物料`);
+        hideModal('modal-main');
+        navigateTo('bom-detail', { id: bomRes.id });
+    } else {
+        toast(data.error || '导入失败', 'error');
+    }
+}
+
+async function doImportBOMToVersion(bid) {
+    const fileInput = $('#bom-import-file');
+    if (!fileInput.files[0]) { toast('请选择文件', 'error'); return; }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    const res = await fetch(`/api/boms/${bid}/import`, {
+        method: 'POST', body: formData
+    });
+    const data = await res.json();
+    if (data.success) {
+        toast(`导入成功: ${data.imported} 条物料`);
+        hideModal('modal-main');
+        navigateTo('bom-detail', { id: bid });
+    } else {
+        toast(data.error || '导入失败', 'error');
+    }
+}
+
+// ── 审批中心 ──────────────────────────────────────────────────
+registerPage('approvals', async (el) => {
+    const pending = await api('/api/approvals/pending');
+    const history = await api('/api/approvals/history');
+
+    el.innerHTML = `
+        <div class="page-header">
+            <div class="greeting">✅ 审批中心</div>
+            <div class="date">管理待审批事项</div>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="showApprovalTab(this, 'pending')">待审批 (${(pending || []).length})</div>
+            <div class="tab" onclick="showApprovalTab(this, 'history')">审批历史</div>
+        </div>
+        <div id="approval-content">
+            <div class="card">
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>类型</th><th>标题</th><th>提交时间</th><th>操作</th></tr></thead>
+                        <tbody>
+                            ${(pending || []).map(p => `
+                                <tr>
+                                    <td><span class="badge badge-warning">${p.type === 'req_change' ? '需求变更' : '图纸ECO'}</span></td>
+                                    <td>${p.title}</td>
+                                    <td>${formatDateTime(p.created_at)}</td>
+                                    <td class="actions">
+                                        <button class="btn btn-sm btn-primary" onclick="approveItem('${p.type}', ${p.id})">通过</button>
+                                        <button class="btn btn-sm btn-danger" onclick="rejectItem('${p.type}', ${p.id})">驳回</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ${!pending || pending.length === 0 ? '<div class="empty-state"><div class="icon">✅</div><p>暂无待审批事项</p></div>' : ''}
+            </div>
+        </div>
+    `;
+
+    window._approvalHistory = history;
+});
+
+function showApprovalTab(tabEl, tab) {
+    $$('.tab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    const content = $('#approval-content');
+
+    if (tab === 'pending') {
+        navigateTo('approvals');
+    } else {
+        const history = window._approvalHistory || [];
+        content.innerHTML = `
+            <div class="card">
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>类型</th><th>ID</th><th>审批人</th><th>决定</th><th>意见</th><th>时间</th></tr></thead>
+                        <tbody>
+                            ${history.map(h => `
+                                <tr>
+                                    <td>${h.target_type}</td>
+                                    <td>${h.target_id}</td>
+                                    <td>${h.approver_name || '-'}</td>
+                                    <td><span class="badge ${h.decision === '通过' ? 'badge-success' : 'badge-danger'}">${h.decision}</span></td>
+                                    <td>${h.comment || '-'}</td>
+                                    <td>${formatDateTime(h.decided_at)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ${history.length === 0 ? '<div class="empty-state"><p>暂无审批记录</p></div>' : ''}
+            </div>
+        `;
+    }
+}
+
+function approveItem(type, id) {
+    doApproval(type, id, '通过');
+}
+
+function rejectItem(type, id) {
+    doApproval(type, id, '驳回');
+}
+
+async function doApproval(type, id, decision) {
+    const comment = prompt(`请输入审批意见 (${decision}):`, '');
+    if (comment === null) return;
+    const res = await api(`/api/approvals/${type}/${id}`, {
+        method: 'POST',
+        body: { decision, comment }
+    });
+    if (res && res.success) {
+        toast(`已${decision}`);
+        navigateTo('approvals');
+    }
+}
+
+// ── 用户管理 ──────────────────────────────────────────────────
+registerPage('users', async (el) => {
+    const users = await api('/api/users');
+    const roles = ['项目管理员', '项目经理', '设计工程师', '需求工程师', '文控/质量', '系统管理员'];
+
+    el.innerHTML = `
+        <div class="page-header">
+            <div class="greeting">👥 用户管理</div>
+            <div class="date">管理系统用户</div>
+        </div>
+        <div class="toolbar">
+            <div class="toolbar-right">
+                <button class="btn btn-primary" onclick="showCreateUser()">+ 新建用户</button>
+            </div>
+        </div>
+        <div class="card">
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>用户名</th><th>姓名</th><th>角色</th><th>邮箱</th><th>状态</th><th>操作</th></tr></thead>
+                    <tbody>
+                        ${(users || []).map(u => `
+                            <tr>
+                                <td style="font-weight:500">${u.username}</td>
+                                <td>${u.real_name || '-'}</td>
+                                <td><span class="badge badge-info">${u.role}</span></td>
+                                <td>${u.email || '-'}</td>
+                                <td><span class="badge ${u.is_active ? 'badge-success' : 'badge-gray'}">${u.is_active ? '启用' : '禁用'}</span></td>
+                                <td class="actions">
+                                    <button class="btn btn-sm" onclick="showEditUser(${JSON.stringify(u).replace(/"/g, '&quot;')})">编辑</button>
+                                    ${u.is_active ? `<button class="btn btn-sm btn-danger" onclick="disableUser(${u.id})">禁用</button>` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+});
+
+function showCreateUser() {
+    const roles = ['项目管理员', '项目经理', '设计工程师', '需求工程师', '文控/质量', '系统管理员'];
+    $('#modal-title').textContent = '新建用户';
+    $('#modal-body').innerHTML = `
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">用户名 *</label>
+                <input type="text" class="form-input" id="u-username" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">密码 *</label>
+                <input type="password" class="form-input" id="u-password" required>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">姓名 *</label>
+                <input type="text" class="form-input" id="u-name" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">角色</label>
+                <select class="form-select" id="u-role">
+                    ${roles.map(r => `<option value="${r}">${r}</option>`).join('')}
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">邮箱</label>
+                <input type="email" class="form-input" id="u-email">
+            </div>
+            <div class="form-group">
+                <label class="form-label">电话</label>
+                <input type="text" class="form-input" id="u-phone">
+            </div>
+        </div>
+    `;
+    $('#modal-footer').innerHTML = `
+        <button class="btn" onclick="hideModal('modal-main')">取消</button>
+        <button class="btn btn-primary" onclick="createUser()">创建</button>
+    `;
+    showModal('modal-main');
+}
+
+async function createUser() {
+    const data = {
+        username: $('#u-username').value,
+        password: $('#u-password').value,
+        real_name: $('#u-name').value,
+        role: $('#u-role').value,
+        email: $('#u-email').value,
+        phone: $('#u-phone').value
+    };
+    if (!data.username || !data.password || !data.real_name) {
+        toast('请填写必填字段', 'error'); return;
+    }
+    const res = await api('/api/users', { method: 'POST', body: data });
+    if (res && res.success) {
+        toast('用户创建成功');
+        hideModal('modal-main');
+        navigateTo('users');
+    }
+}
+
+function showEditUser(user) {
+    const roles = ['项目管理员', '项目经理', '设计工程师', '需求工程师', '文控/质量', '系统管理员'];
+    $('#modal-title').textContent = '编辑用户';
+    $('#modal-body').innerHTML = `
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">姓名</label>
+                <input type="text" class="form-input" id="u-name" value="${user.real_name || ''}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">角色</label>
+                <select class="form-select" id="u-role">
+                    ${roles.map(r => `<option value="${r}" ${user.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">邮箱</label>
+                <input type="email" class="form-input" id="u-email" value="${user.email || ''}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">电话</label>
+                <input type="text" class="form-input" id="u-phone" value="${user.phone || ''}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">新密码 (留空不修改)</label>
+            <input type="password" class="form-input" id="u-password">
+        </div>
+    `;
+    $('#modal-footer').innerHTML = `
+        <button class="btn" onclick="hideModal('modal-main')">取消</button>
+        <button class="btn btn-primary" onclick="updateUser(${user.id})">保存</button>
+    `;
+    showModal('modal-main');
+}
+
+async function updateUser(uid) {
+    const data = {
+        real_name: $('#u-name').value,
+        role: $('#u-role').value,
+        email: $('#u-email').value,
+        phone: $('#u-phone').value,
+        password: $('#u-password').value
+    };
+    const res = await api(`/api/users/${uid}`, { method: 'PUT', body: data });
+    if (res && res.success) {
+        toast('用户已更新');
+        hideModal('modal-main');
+        navigateTo('users');
+    }
+}
+
+async function disableUser(uid) {
+    if (!confirm('确定禁用此用户？')) return;
+    const res = await api(`/api/users/${uid}`, { method: 'DELETE' });
+    if (res && res.success) {
+        toast('用户已禁用');
+        navigateTo('users');
+    }
+}
+
+// ── 系统设置 ──────────────────────────────────────────────────
+registerPage('settings', async (el) => {
+    const cfg = await api('/api/settings/config');
+    if (!cfg) return;
+
+    el.innerHTML = `
+        <div class="page-header">
+            <div class="greeting">⚙️ 系统设置</div>
+            <div class="date">配置系统参数</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><span class="card-title">基本设置</span></div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">数据根目录</label>
+                    <input type="text" class="form-input" id="s-data-root" value="${cfg.data_root || ''}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">项目号生成规则</label>
+                    <input type="text" class="form-input" id="s-number-rule" value="${cfg.project_number_rule || ''}">
+                    <p style="font-size:12px;color:var(--text-muted);margin-top:4px">
+                        变量: {type_prefix} 类型前缀, {yy} 年份, {mm} 月份, {flow:03d} 流水号
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">项目类型 (JSON)</label>
+                    <textarea class="form-textarea" id="s-types">${JSON.stringify(cfg.project_types, null, 2)}</textarea>
+                </div>
+                <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><span class="card-title">审批流配置</span></div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">需求变更审批角色</label>
+                        <input type="text" class="form-input" id="s-req-stages"
+                               value="${(cfg.approval_stages?.requirement || []).join(',')}"
+                               placeholder="角色用逗号分隔">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">图纸ECO审批角色</label>
+                        <input type="text" class="form-input" id="s-draw-stages"
+                               value="${(cfg.approval_stages?.drawing || []).join(',')}"
+                               placeholder="角色用逗号分隔">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">BOM变更审批角色</label>
+                    <input type="text" class="form-input" id="s-bom-stages"
+                           value="${(cfg.approval_stages?.bom || []).join(',')}"
+                           placeholder="角色用逗号分隔">
+                </div>
+                <button class="btn btn-primary" onclick="saveApprovalSettings()">保存审批设置</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><span class="card-title">备份与恢复</span></div>
+            <div class="card-body">
+                <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <button class="btn btn-primary" onclick="doBackup()">📦 立即备份</button>
+                    <label class="btn" style="cursor:pointer">
+                        📥 恢复备份
+                        <input type="file" accept=".zip" style="display:none" onchange="doRestore(this)">
+                    </label>
+                </div>
+                <p style="font-size:12px;color:var(--text-muted);margin-top:12px">
+                    备份将打包数据库和所有附件文件为ZIP格式
+                </p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><span class="card-title">系统日志</span></div>
+            <div class="card-body" id="audit-log-content">
+                <div class="loading"><div class="spinner"></div>加载中...</div>
+            </div>
+        </div>
+    `;
+
+    // 加载审计日志
+    const logs = await api('/api/audit-logs?limit=20');
+    if (logs) {
+        $('#audit-log-content').innerHTML = `
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>详情</th></tr></thead>
+                    <tbody>
+                        ${logs.map(l => `
+                            <tr>
+                                <td style="white-space:nowrap">${formatDateTime(l.timestamp)}</td>
+                                <td>${l.user_name || '-'}</td>
+                                <td>${l.action}</td>
+                                <td style="font-size:12px;color:var(--text-muted)">${l.details || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+});
+
+async function saveSettings() {
+    const data = {
+        data_root: $('#s-data-root').value,
+        project_number_rule: $('#s-number-rule').value
+    };
+    const res = await api('/api/settings/config', { method: 'PUT', body: data });
+    if (res && res.success) {
+        toast('设置已保存');
+    }
+}
+
+async function saveApprovalSettings() {
+    const data = {
+        approval_stages: {
+            requirement: $('#s-req-stages').value.split(',').map(s => s.trim()).filter(Boolean),
+            drawing: $('#s-draw-stages').value.split(',').map(s => s.trim()).filter(Boolean),
+            bom: $('#s-bom-stages').value.split(',').map(s => s.trim()).filter(Boolean)
+        }
+    };
+    const res = await api('/api/settings/config', { method: 'PUT', body: data });
+    if (res && res.success) {
+        toast('审批设置已保存');
+    }
+}
+
+async function doBackup() {
+    const res = await api('/api/settings/backup', { method: 'POST' });
+    if (res && res.success) {
+        toast(`备份完成: ${res.file}`);
+    }
+}
+
+async function doRestore(input) {
+    if (!input.files[0]) return;
+    if (!confirm('恢复将覆盖当前数据，确定继续？')) { input.value = ''; return; }
+    const formData = new FormData();
+    formData.append('backup', input.files[0]);
+    const res = await fetch('/api/settings/restore', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.success) {
+        toast('恢复成功，即将刷新页面');
+        setTimeout(() => location.reload(), 1500);
+    } else {
+        toast(data.error || '恢复失败', 'error');
+    }
+    input.value = '';
+}
+
+// ── 文件筛选辅助 ──────────────────────────────────────────────
+async function filterProjectFiles(pid, category) {
+    const files = await api(`/api/projects/${pid}/files?category=${category}`);
+    const tbody = $('#files-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = (files || []).map(f => `
+        <tr>
+            <td>${f.file_name}</td>
+            <td><span class="badge badge-info">V${f.version}</span></td>
+            <td>${f.category}</td>
+            <td>${f.uploader_name || '-'}</td>
+            <td>${formatDateTime(f.upload_time)}</td>
+            <td class="actions">
+                <button class="btn btn-sm" onclick="previewFile(${f.id}, '${f.file_name}')">查看</button>
+                <a class="btn btn-sm" href="/api/files/${f.id}/download">下载</a>
+                <button class="btn btn-sm btn-danger" onclick="deleteFile(${f.id}, ${pid})">删除</button>
+            </td>
+        </tr>
+    `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无文件</td></tr>';
+}
+
+// ── 文件预览 ──────────────────────────────────────────────────
+function previewFile(fid, fileName) {
+    const ext = fileName.split('.').pop().toLowerCase();
+    const previewUrl = `/api/files/${fid}/preview`;
+
+    if (ext === 'pdf') {
+        // PDF：新标签页内嵌查看
+        window.open(previewUrl, '_blank');
+    } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
+        // 图片：弹窗查看
+        $('#modal-title').textContent = fileName;
+        $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" style="max-width:100%;max-height:70vh;border-radius:var(--radius)"></div>`;
+        $('#modal-footer').innerHTML = `<a class="btn" href="/api/files/${fid}/download">下载原文件</a> <button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
+        showModal('modal-main');
+    } else {
+        // 其他文件：新标签页尝试查看
+        window.open(previewUrl, '_blank');
+    }
+}
+</script>
+</body>
+</html>

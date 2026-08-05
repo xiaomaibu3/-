@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: mimoclaw-project-management
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
+    healthCheckPath: /healthz
+    envVars:
+      - key: MIMOCLAW_DATA_ROOT
+        value: /tmp/mimoclaw-data
+

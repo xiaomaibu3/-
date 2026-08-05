@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>项目管理系统 - 登录</title>
+    <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="login-page">
+        <div class="login-card">
+            <h1><img class="app-logo" src="/static/icons/app-icon.svg" alt="" aria-hidden="true"> 项目管理系统</h1>
+            <p class="subtitle">请登录以继续</p>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="form-label">用户名</label>
+                    <input type="text" class="form-input" id="username" name="username" required autofocus placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">密码</label>
+                    <input type="password" class="form-input" id="password" name="password" required placeholder="请输入密码">
+                </div>
+                <div class="form-group" style="margin-top:24px">
+                    <button type="submit" class="btn btn-primary">登 录</button>
+                </div>
+            </form>
+            <p style="text-align:center;color:var(--text-muted);font-size:12px;margin-top:16px">
+                默认管理员: admin / admin123
+            </p>
+        </div>
+    </div>
+    <div class="toast-container"></div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                username: document.getElementById('username').value,
+                password: document.getElementById('password').value
+            };
+            const res = await fetch('/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.setup_required || result.redirect) {
+                window.location.href = result.redirect;
+                return;
+            }
+            if (result.error) {
+                toast(result.error, 'error');
+            }
+        });
+
+        function toast(msg, type) {
+            const c = document.querySelector('.toast-container');
+            const el = document.createElement('div');
+            el.className = 'toast ' + type;
+            el.innerHTML = '<span>' + msg + '</span>';
+            c.appendChild(el);
+            setTimeout(() => el.remove(), 3500);
+        }
+    </script>
+</body>
+</html>

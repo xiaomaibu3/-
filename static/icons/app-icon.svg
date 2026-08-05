@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Project management app icon">
+  <rect width="256" height="256" rx="44" fill="#10B981"/>
+  <rect x="68" y="48" width="104" height="140" rx="18" fill="none" stroke="#FFFFFF" stroke-width="14"/>
+  <path d="M102 80h70l28 28v80a18 18 0 0 1-18 18H102a18 18 0 0 1-18-18V98a18 18 0 0 1 18-18Z" fill="#FFFFFF" opacity=".18"/>
+  <path d="M172 80v30h30" fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+  <path d="M102 124h62M102 154h44" fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-width="12"/>
+  <circle cx="178" cy="178" r="34" fill="#FFFFFF"/>
+  <path d="m162 178 11 11 24-28" fill="none" stroke="#10B981" stroke-linecap="round" stroke-linejoin="round" stroke-width="12"/>
+</svg>
+
