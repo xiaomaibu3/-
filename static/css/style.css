@@ -346,6 +346,10 @@ body {
     overflow-x: auto;
 }
 
+.mobile-card-list {
+    display: none;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -990,6 +994,85 @@ tr:last-child td {
 
     table {
         min-width: 720px;
+    }
+
+    .table-wrapper table {
+        display: none;
+    }
+
+    .mobile-card-list {
+        display: grid;
+        gap: 10px;
+    }
+
+    .mobile-record-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px;
+        min-width: 0;
+    }
+
+    .mobile-record-title {
+        color: var(--text);
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+    }
+
+    .mobile-record-subtitle {
+        color: var(--text-muted);
+        font-size: 12px;
+        line-height: 1.4;
+        margin-top: 3px;
+        overflow-wrap: anywhere;
+    }
+
+    .mobile-record-fields {
+        display: grid;
+        gap: 7px;
+        margin-top: 10px;
+    }
+
+    .mobile-record-field {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        border-top: 1px solid var(--border);
+        padding-top: 7px;
+    }
+
+    .mobile-record-label {
+        color: var(--text-muted);
+        flex: 0 0 34%;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .mobile-record-value {
+        color: var(--text);
+        flex: 1 1 auto;
+        font-size: 13px;
+        line-height: 1.45;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        text-align: right;
+    }
+
+    .mobile-record-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .mobile-record-actions .btn {
+        flex: 1 1 calc(50% - 8px);
+        justify-content: center;
+        min-height: 40px;
+        white-space: normal;
     }
 
     .modal {

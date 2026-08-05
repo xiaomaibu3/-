@@ -70,6 +70,23 @@ class XingguiMobileAppTest(unittest.TestCase):
         self.assertIn("BiometricPrompt", activity)
         self.assertIn("xinggui:credentials", activity)
 
+    def test_android_wrapper_requires_fresh_login_after_background_resume(self):
+        activity = (ROOT / "android-xinggui" / "app" / "src" / "main" / "java" / "com" / "xinggui" / "app" / "MainActivity.java").read_text(encoding="utf-8")
+
+        self.assertIn("protected void onStop()", activity)
+        self.assertIn("protected void onResume()", activity)
+        self.assertIn("requireFreshLogin()", activity)
+        self.assertIn("removeSessionCookies", activity)
+        self.assertIn('WEB_APP_URL + "login"', activity)
+
+    def test_android_wrapper_does_not_prompt_again_after_fingerprint_enrolled(self):
+        activity = (ROOT / "android-xinggui" / "app" / "src" / "main" / "java" / "com" / "xinggui" / "app" / "MainActivity.java").read_text(encoding="utf-8")
+        login = (ROOT / "templates" / "login.html").read_text(encoding="utf-8")
+
+        self.assertIn("if (hasSavedLogin())", activity)
+        self.assertIn("return;", activity[activity.index("enableCredentialLogin"):activity.index("requestFingerprintLogin")])
+        self.assertIn("hasSavedLogin()", login)
+
     def test_web_login_exposes_fingerprint_login_for_android_shell(self):
         login = (ROOT / "templates" / "login.html").read_text(encoding="utf-8")
         pwa_js = (ROOT / "static" / "js" / "pwa.js").read_text(encoding="utf-8")
@@ -86,6 +103,19 @@ class XingguiMobileAppTest(unittest.TestCase):
         self.assertIn("min-height: 48px", css)
         self.assertIn(".modal.mobile-bottom-sheet", css)
         self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr))", css)
+
+    def test_mobile_tables_render_as_cards_on_phone(self):
+        css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        pwa_js = (ROOT / "static" / "js" / "pwa.js").read_text(encoding="utf-8")
+
+        self.assertIn("enhanceMobileTables", pwa_js)
+        self.assertIn("MutationObserver", pwa_js)
+        self.assertIn("mobile-card-list", pwa_js)
+        self.assertIn("mobile-record-card", pwa_js)
+        self.assertIn(".mobile-card-list", css)
+        self.assertIn(".mobile-record-card", css)
+        self.assertIn(".mobile-record-actions", css)
+        self.assertIn(".table-wrapper table", css)
 
 
 if __name__ == "__main__":

@@ -49,7 +49,7 @@
             });
             const result = await res.json();
             if (result.setup_required || result.redirect) {
-                if (result.success && window.XingguiNative && window.XingguiNative.enableCredentialLogin) {
+                if (result.success && window.XingguiNative && window.XingguiNative.enableCredentialLogin && (!window.XingguiNative.hasSavedLogin || !window.XingguiNative.hasSavedLogin())) {
                     window.XingguiNative.enableCredentialLogin(data.username, data.password);
                 }
                 window.location.href = result.redirect;

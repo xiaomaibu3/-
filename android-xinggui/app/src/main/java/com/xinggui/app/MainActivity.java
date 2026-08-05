@@ -18,6 +18,7 @@ import android.security.keystore.KeyProperties;
 import android.util.Base64;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
+import android.webkit.CookieManager;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -45,6 +46,8 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private Runnable pendingAuthenticatedAction;
+    private boolean shouldRequireLoginOnResume = false;
+    private boolean isAuthenticating = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,7 +79,7 @@ public class MainActivity extends Activity {
                 handler.cancel();
             }
         });
-        webView.loadUrl(WEB_APP_URL);
+        webView.loadUrl(WEB_APP_URL + "login");
         setContentView(webView);
     }
 
@@ -90,11 +93,29 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+        if (!isChangingConfigurations() && !isAuthenticating) {
+            shouldRequireLoginOnResume = true;
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (shouldRequireLoginOnResume) {
+            shouldRequireLoginOnResume = false;
+            requireFreshLogin();
+        }
+    }
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_DEVICE_CREDENTIAL) {
             Runnable action = pendingAuthenticatedAction;
             pendingAuthenticatedAction = null;
+            isAuthenticating = false;
             if (resultCode == RESULT_OK && action != null) {
                 action.run();
             } else {
@@ -112,6 +133,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void enableCredentialLogin(final String username, final String password) {
             if (username == null || username.trim().isEmpty() || password == null || password.isEmpty()) {
+                return;
+            }
+            if (hasSavedLogin()) {
                 return;
             }
             runOnUiThread(new Runnable() {
@@ -168,6 +192,7 @@ public class MainActivity extends Activity {
     }
 
     private void authenticate(String title, Runnable action) {
+        isAuthenticating = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             authenticateWithBiometricPrompt(title, action);
             return;
@@ -183,6 +208,7 @@ public class MainActivity extends Activity {
             .setNegativeButton("取消", getMainExecutor(), new DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(DialogInterface dialog, int which) {
+                    isAuthenticating = false;
                     showNativeMessage("验证已取消");
                 }
             })
@@ -191,6 +217,7 @@ public class MainActivity extends Activity {
         prompt.authenticate(new CancellationSignal(), getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
             @Override
             public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
+                isAuthenticating = false;
                 action.run();
             }
 
@@ -198,6 +225,8 @@ public class MainActivity extends Activity {
             public void onAuthenticationError(int errorCode, CharSequence errString) {
                 if (errorCode != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED) {
                     authenticateWithDeviceCredential(title, action);
+                } else {
+                    isAuthenticating = false;
                 }
             }
 
@@ -211,16 +240,30 @@ public class MainActivity extends Activity {
     private void authenticateWithDeviceCredential(String title, Runnable action) {
         KeyguardManager keyguard = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
         if (keyguard == null || !keyguard.isKeyguardSecure()) {
+            isAuthenticating = false;
             showNativeMessage("请先在手机系统中设置锁屏密码或指纹");
             return;
         }
         pendingAuthenticatedAction = action;
         Intent intent = keyguard.createConfirmDeviceCredentialIntent(title, "验证后继续使用星轨");
         if (intent == null) {
+            isAuthenticating = false;
             showNativeMessage("当前设备不支持系统验证");
             return;
         }
         startActivityForResult(intent, REQUEST_DEVICE_CREDENTIAL);
+    }
+
+    private void requireFreshLogin() {
+        if (webView == null) {
+            return;
+        }
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.removeSessionCookies(null);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            cookieManager.flush();
+        }
+        webView.loadUrl(WEB_APP_URL + "login");
     }
 
     private SecretKey getOrCreateSecretKey() throws Exception {
