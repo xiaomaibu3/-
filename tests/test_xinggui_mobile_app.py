@@ -117,6 +117,24 @@ class XingguiMobileAppTest(unittest.TestCase):
         self.assertIn(".mobile-record-actions", css)
         self.assertIn(".table-wrapper table", css)
 
+    def test_page_navigation_uses_smooth_web_layer_transitions(self):
+        css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        app_js = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("PAGE_TRANSITION_MS", app_js)
+        self.assertIn("page-transition-out", app_js)
+        self.assertIn("page-transition-in", app_js)
+        self.assertIn("prefers-reduced-motion", app_js)
+        self.assertIn(".page-transition-out", css)
+        self.assertIn(".page-transition-in", css)
+        self.assertIn("@keyframes pageEnter", css)
+        self.assertIn("@media (prefers-reduced-motion: reduce)", css)
+
+    def test_service_worker_cache_version_updates_for_animation_assets(self):
+        service_worker = (ROOT / "static" / "service-worker.js").read_text(encoding="utf-8")
+
+        self.assertIn("xinggui-pwa-v2", service_worker)
+
 
 if __name__ == "__main__":
     unittest.main()

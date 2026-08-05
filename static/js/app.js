@@ -79,12 +79,42 @@ function hideModal(id) {
 // ── 页面路由 ──────────────────────────────────────────────────
 const routes = {};
 let currentPage = '';
+const PAGE_TRANSITION_MS = 170;
 
 function registerPage(name, renderFn) {
     routes[name] = renderFn;
 }
 
-function navigateTo(page, params = {}) {
+function prefersReducedMotion() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function waitForTransition(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function renderPageContent(content, page, params, previousPage) {
+    if (!routes[page]) return;
+
+    if (prefersReducedMotion() || !previousPage || previousPage === page) {
+        await routes[page](content, params);
+        content.classList.remove('page-transition-out', 'page-transition-in');
+        return;
+    }
+
+    content.classList.remove('page-transition-in');
+    content.classList.add('page-transition-out');
+    await waitForTransition(PAGE_TRANSITION_MS);
+
+    await routes[page](content, params);
+
+    content.classList.remove('page-transition-out');
+    content.classList.add('page-transition-in');
+    window.setTimeout(() => content.classList.remove('page-transition-in'), PAGE_TRANSITION_MS + 80);
+}
+
+async function navigateTo(page, params = {}) {
+    const previousPage = currentPage;
     currentPage = page;
     const content = $('#page-content');
     if (!content) return;
@@ -95,7 +125,7 @@ function navigateTo(page, params = {}) {
     if (navItem) navItem.classList.add('active');
 
     if (routes[page]) {
-        routes[page](content, params);
+        await renderPageContent(content, page, params, previousPage);
     }
 }
 
