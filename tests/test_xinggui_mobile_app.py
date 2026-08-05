@@ -1,0 +1,61 @@
+import json
+from pathlib import Path
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class XingguiMobileAppTest(unittest.TestCase):
+    def test_pwa_manifest_declares_xinggui_mobile_app(self):
+        manifest = json.loads((ROOT / "static" / "manifest.webmanifest").read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["name"], "星轨")
+        self.assertEqual(manifest["short_name"], "星轨")
+        self.assertEqual(manifest["start_url"], "/")
+        self.assertEqual(manifest["display"], "standalone")
+        self.assertEqual(manifest["theme_color"], "#10B981")
+        self.assertIn({"src": "/static/icons/app-icon-192.png", "sizes": "192x192", "type": "image/png"}, manifest["icons"])
+        self.assertIn({"src": "/static/icons/app-icon-512.png", "sizes": "512x512", "type": "image/png"}, manifest["icons"])
+
+    def test_templates_register_pwa_assets(self):
+        login = (ROOT / "templates" / "login.html").read_text(encoding="utf-8")
+        dashboard = (ROOT / "templates" / "dashboard.html").read_text(encoding="utf-8")
+
+        for html in (login, dashboard):
+            self.assertIn('rel="manifest"', html)
+            self.assertIn('name="theme-color"', html)
+            self.assertIn('/static/js/pwa.js', html)
+
+    def test_app_serves_root_scope_service_worker(self):
+        app_py = (ROOT / "app.py").read_text(encoding="utf-8")
+
+        self.assertIn("@app.route('/manifest.webmanifest')", app_py)
+        self.assertIn("@app.route('/service-worker.js')", app_py)
+        self.assertIn("send_from_directory", app_py)
+
+    def test_mobile_styles_exist_for_app_shell(self):
+        css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+
+        self.assertIn("@media (max-width: 768px)", css)
+        self.assertIn(".mobile-app-bar", css)
+        self.assertIn(".mobile-nav-toggle", css)
+        self.assertIn(".sidebar.mobile-open", css)
+
+    def test_android_wrapper_targets_server_and_uses_xinggui_name(self):
+        manifest = (ROOT / "android-xinggui" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
+        strings = (ROOT / "android-xinggui" / "app" / "src" / "main" / "res" / "values" / "strings.xml").read_text(encoding="utf-8")
+        activity = (ROOT / "android-xinggui" / "app" / "src" / "main" / "java" / "com" / "xinggui" / "app" / "MainActivity.java").read_text(encoding="utf-8")
+
+        self.assertIn('android:label="@string/app_name"', manifest)
+        self.assertIn('android:usesCleartextTraffic="true"', manifest)
+        self.assertIn("android.permission.INTERNET", manifest)
+        self.assertIn("<string name=\"app_name\">星轨</string>", strings)
+        self.assertIn('WEB_APP_URL = "http://154.12.85.176/"', activity)
+        self.assertIn("setJavaScriptEnabled(true)", activity)
+        self.assertIn("setDomStorageEnabled(true)", activity)
+        self.assertIn("new WebViewClient()", activity)
+
+
+if __name__ == "__main__":
+    unittest.main()

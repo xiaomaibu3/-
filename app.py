@@ -12,7 +12,7 @@ from functools import wraps
 
 from flask import (
     Flask, render_template, request, jsonify, redirect,
-    url_for, session, send_file, flash
+    url_for, session, send_file, send_from_directory, flash
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -101,6 +101,16 @@ def index():
 @app.route('/healthz')
 def healthz():
     return jsonify({'status': 'ok'})
+
+
+@app.route('/manifest.webmanifest')
+def pwa_manifest():
+    return send_from_directory(app.static_folder, 'manifest.webmanifest', mimetype='application/manifest+json')
+
+
+@app.route('/service-worker.js')
+def service_worker():
+    return send_from_directory(app.static_folder, 'service-worker.js', mimetype='application/javascript')
 
 
 @app.route('/login', methods=['GET', 'POST'])
