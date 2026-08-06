@@ -86,8 +86,9 @@ class ClassList {
 }
 
 class Element {
-  constructor(id, classes = []) {
+  constructor(id, classes = [], tagName = 'div') {
     this.id = id;
+    this.tagName = tagName.toUpperCase();
     this.dataset = {};
     this.style = {};
     this.hidden = false;
@@ -98,6 +99,8 @@ class Element {
     this.href = '';
     this.src = '';
     this.value = '';
+    this.onclick = null;
+    this.listeners = new Map();
     this.classList = new ClassList(this);
     this.classList.add(...classes);
   }
@@ -121,8 +124,29 @@ class Element {
     if (name === 'href') this.href = '';
     if (name === 'src') this.src = '';
   }
-  addEventListener() {}
-  removeEventListener() {}
+  addEventListener(type, listener) {
+    const listeners = this.listeners.get(type) || [];
+    listeners.push(listener);
+    this.listeners.set(type, listeners);
+  }
+  removeEventListener(type, listener) {
+    const listeners = this.listeners.get(type) || [];
+    this.listeners.set(type, listeners.filter(candidate => candidate !== listener));
+  }
+  click() {
+    const event = {
+      type: 'click',
+      target: this,
+      currentTarget: this,
+      defaultPrevented: false,
+      preventDefault() { this.defaultPrevented = true; },
+    };
+    for (const listener of this.listeners.get('click') || []) listener.call(this, event);
+    if (typeof this.onclick === 'function') this.onclick.call(this, event);
+    if (!event.defaultPrevented && this.tagName === 'A' && this.href) {
+      navigation.href = this.href;
+    }
+  }
   replaceChildren() { this.innerHTML = ''; this.textContent = ''; }
   appendChild(child) { elements.push(child); return child; }
   querySelector(selector) { return document.querySelector(selector); }
@@ -133,12 +157,17 @@ const elements = [
   new Element('file-viewer-modal', ['file-viewer-modal']),
   new Element('file-viewer-title', ['file-viewer-title']),
   new Element('file-viewer-status', ['file-viewer-status']),
-  new Element('file-viewer-download', ['file-viewer-download']),
+  new Element('file-viewer-download', ['file-viewer-download'], 'a'),
   new Element('pdf-viewer', ['pdf-viewer']),
   new Element('word-viewer', ['word-viewer']),
   new Element('cad-viewer', ['cad-viewer']),
 ];
 const byId = Object.fromEntries(elements.map(element => [element.id, element]));
+const navigation = {
+  href: '',
+  assign(url) { this.href = String(url); },
+  replace(url) { this.href = String(url); },
+};
 const selectorMatches = (element, selector) => {
   if (selector.startsWith('#')) return element.id === selector.slice(1);
   if (selector.startsWith('.')) return element.classList.contains(selector.slice(1));
@@ -153,13 +182,14 @@ const document = {
   getElementById: id => byId[id] || null,
   querySelector: selector => elements.find(element => selectorMatches(element, selector)) || null,
   querySelectorAll: selector => elements.filter(element => selectorMatches(element, selector)),
-  createElement: tag => new Element(`${tag}-${elements.length}`),
+  createElement: tag => new Element(`${tag}-${elements.length}`, [], tag),
 };
 const context = {
   console,
   module: { exports: {} },
   exports: {},
-  window: {},
+  window: { location: navigation },
+  location: navigation,
   document,
   Element,
   HTMLElement: Element,
@@ -168,6 +198,7 @@ const context = {
   clearTimeout,
 };
 context.window.document = document;
+context.window.open = url => { navigation.href = String(url); };
 context.globalThis = context;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(fileName, 'utf8'), context, { filename: fileName });
@@ -184,6 +215,16 @@ assert.strictEqual(
   'function',
   'openFileViewer API is missing from static/js/file-viewers.js'
 );
+const downloadCalls = [];
+const downloadSpy = (...args) => downloadCalls.push(args);
+context.__downloadSpy = downloadSpy;
+vm.runInContext(
+  "try { downloadFileViewerSource = globalThis.__downloadSpy; } catch (_) {}",
+  context
+);
+context.downloadFileViewerSource = downloadSpy;
+context.window.downloadFileViewerSource = downloadSpy;
+exported.downloadFileViewerSource = downloadSpy;
 
 const files = {
   pdf: {
@@ -245,6 +286,8 @@ const files = {
 };
 
 function resetDom() {
+  downloadCalls.length = 0;
+  navigation.href = '';
   for (const element of elements) {
     element.dataset = {};
     element.style = {};
@@ -255,6 +298,8 @@ function resetDom() {
     element.innerHTML = '';
     element.href = '';
     element.src = '';
+    element.onclick = null;
+    element.listeners = new Map();
     element.classList.remove('active', 'visible', 'is-active', 'is-visible', 'hidden');
   }
 }
@@ -288,6 +333,39 @@ function domValues() {
     ...Object.values(element.dataset),
     ...Object.values(element.attributes),
   ]).map(String);
+}
+
+function inlineDownloadControls() {
+  const controls = [];
+  for (const owner of elements) {
+    const pattern = /<(a|button)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+    for (const match of owner.innerHTML.matchAll(pattern)) {
+      const control = new Element(`inline-download-${controls.length}`, [], match[1]);
+      control.textContent = match[3].replace(/<[^>]+>/g, ' ');
+      const href = match[2].match(/\bhref\s*=\s*["']([^"']+)["']/i);
+      if (href) control.href = href[1];
+      const onclick = match[2].match(/\bonclick\s*=\s*["']([^"']+)["']/i);
+      if (onclick) {
+        control.onclick = () => vm.runInContext(onclick[1], context);
+      }
+      controls.push(control);
+    }
+  }
+  return controls;
+}
+
+function downloadControls() {
+  return [...elements, ...inlineDownloadControls()].filter(element =>
+    ['A', 'BUTTON'].includes(element.tagName) &&
+    (element.id.toLowerCase().includes('download') ||
+      element.classList.contains('file-viewer-download') ||
+      /(?:download|下载)/i.test(element.textContent) ||
+      element.href || element.onclick || (element.listeners.get('click') || []).length)
+  );
+}
+
+function downloadCallTargetsFile(args, file) {
+  return args.some(value => value === file || value === file.downloadUrl);
 }
 
 (async () => {
@@ -328,13 +406,18 @@ function domValues() {
     const message = domValues().join(' ');
     assert.match(message, fallbackPrompts[extension], `${extension} must show its fallback prompt`);
     assert.match(message, /(?:不支持|暂不支持|unsupported)/i, `${extension} must be explicitly unsupported`);
-    const download = elements.find(element =>
-      element.href === file.downloadUrl ||
-      element.dataset.downloadUrl === file.downloadUrl ||
-      element.attributes.href === file.downloadUrl ||
-      new RegExp(`<(?:a|button)\\b[^>]*(?:href|data-download-url)=["']${file.downloadUrl}["']`, 'i').test(element.innerHTML)
-    );
-    assert.ok(download, `${extension} must expose a download control for its downloadUrl`);
+    const controls = downloadControls();
+    assert.ok(controls.length, `${extension} must expose an anchor or button download control`);
+    let matched = false;
+    for (const control of controls) {
+      downloadCalls.length = 0;
+      navigation.href = '';
+      control.click();
+      matched = downloadCalls.some(args => downloadCallTargetsFile(args, file)) ||
+        navigation.href === file.downloadUrl || control.href === file.downloadUrl;
+      if (matched) break;
+    }
+    assert.ok(matched, `${extension} download click must target its file or downloadUrl`);
   }
 })().catch(error => {
   console.error(`openFileViewer behavior test failed: ${error.stack || error}`);
