@@ -185,9 +185,6 @@ async function navigateTo(page, params = {}) {
 
 // ── 初始化 ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && typeof closeFileViewer === 'function') closeFileViewer();
-    });
     // 导航点击
     $$('.nav-item[data-page]').forEach(el => {
         el.addEventListener('click', (e) => {

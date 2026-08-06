@@ -995,15 +995,18 @@ async function uploadNewVersion(did, pid) {
 function previewDrawing(did, filePath, drawingName) {
     const ext = filePath.split('.').pop().toLowerCase();
     const previewUrl = `/api/drawings/${did}/preview`;
+    const downloadUrl = `/api/drawings/${did}/download`;
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
+        resetFileViewer();
         $('#modal-title').textContent = drawingName;
         $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" alt="${drawingName}" style="max-width:100%;max-height:70vh"></div>`;
         $('#modal-footer').innerHTML = `<a class="btn" href="/api/drawings/${did}/download">下载原文件</a> <button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
         showModal('modal-main');
         return;
     }
-    if (!['pdf', 'docx', 'stp', 'step', 'doc', 'x_t', 'x_b'].includes(ext)) return;
-    return openFileViewer({name: drawingName || filePath, fileName: filePath, extension: ext, previewUrl, downloadUrl: `/api/drawings/${did}/download`});
+    if (!['pdf', 'docx', 'stp', 'step', 'doc', 'x_t', 'x_b'].includes(ext)) return location.assign(downloadUrl);
+    hideModal('modal-main');
+    return openFileViewer({name: drawingName || filePath, fileName: filePath, extension: ext, previewUrl, downloadUrl});
 }
 
 // ── 图纸批量上传 ──────────────────────────────────────────────
@@ -2251,15 +2254,18 @@ async function filterProjectFiles(pid, category) {
 function previewFile(fid, fileName) {
     const ext = fileName.split('.').pop().toLowerCase();
     const previewUrl = `/api/files/${fid}/preview`;
+    const downloadUrl = `/api/files/${fid}/download`;
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
+        resetFileViewer();
         $('#modal-title').textContent = fileName;
         $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" alt="${fileName}" style="max-width:100%;max-height:70vh"></div>`;
         $('#modal-footer').innerHTML = `<a class="btn" href="/api/files/${fid}/download">下载原文件</a> <button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
         showModal('modal-main');
         return;
     }
-    if (!['pdf', 'docx', 'stp', 'step', 'doc', 'x_t', 'x_b'].includes(ext)) return;
-    return openFileViewer({name: fileName, fileName, extension: ext, previewUrl, downloadUrl: `/api/files/${fid}/download`});
+    if (!['pdf', 'docx', 'stp', 'step', 'doc', 'x_t', 'x_b'].includes(ext)) return location.assign(downloadUrl);
+    hideModal('modal-main');
+    return openFileViewer({name: fileName, fileName, extension: ext, previewUrl, downloadUrl});
 }
 </script>
 </body>

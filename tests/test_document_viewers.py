@@ -371,6 +371,92 @@ api.registerFileViewerRenderer('pdf', async (target, current) => {
         self.assertRegex(CSS, r"\.word-viewer[^}]*line-height\s*:")
         self.assertRegex(CSS, r"\.cad-viewer[^}]*overflow\s*:\s*hidden")
 
+    def test_stale_async_renderers_cannot_mutate_current_or_closed_viewer(self):
+        node = node_executable()
+        self.assertIsNotNone(node, "Node runtime missing; set NODE_EXE or install node")
+        viewer_script = ROOT / "static/js" / "file-viewers.js"
+        harness = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const elements = new Map(), revoked = [], documentListeners = {};
+function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return {promise, resolve, reject}; }
+function element(id) {
+  if (!elements.has(id)) elements.set(id, {id, dataset:{}, style:{}, hidden:false, textContent:'', innerHTML:'', href:'', onclick:null,
+    focus(){ document.activeElement = this; }, addEventListener(){}, removeEventListener(){}, querySelectorAll(){ return []; }});
+  return elements.get(id);
+}
+const trigger = element('trigger');
+const document = {activeElement:trigger, getElementById:element, querySelector:s=>element(s.replace(/^#/,'')),
+  addEventListener(type, fn){ (documentListeners[type] ||= []).push(fn); }, removeEventListener(){}};
+const context = {console, module:{exports:{}}, exports:{}, document, window:{}, globalThis:null,
+  URL:{revokeObjectURL:url=>revoked.push(url)}, location:{assign(){}}, setTimeout, clearTimeout};
+context.globalThis=context; context.window.location=context.location;
+vm.createContext(context); vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+const api=context.module.exports, first=deferred(), second=deferred(); let firstCleanup=0, secondCleanup=0;
+api.registerFileViewerRenderer('pdf', () => first.promise);
+const openA=api.openFileViewer({name:'a.pdf', extension:'pdf', previewUrl:'/a', downloadUrl:'/da'});
+api.registerFileViewerRenderer('pdf', () => second.promise);
+const openB=api.openFileViewer({name:'b.pdf', extension:'pdf', previewUrl:'/b', downloadUrl:'/db'});
+second.resolve({cleanup:()=>secondCleanup++, objectUrl:'blob:b'});
+(async()=>{
+  await openB;
+  assert.strictEqual(element('file-viewer-modal').dataset.state, 'ready');
+  assert.strictEqual(element('pdf-viewer').dataset.previewUrl, '/b');
+  first.resolve({cleanup:()=>firstCleanup++, objectUrl:'blob:a'});
+  await openA;
+  assert.strictEqual(firstCleanup, 1, 'late cleanup must run immediately');
+  assert.ok(revoked.includes('blob:a'), 'late object URL must be revoked immediately');
+  assert.strictEqual(element('pdf-viewer').dataset.previewUrl, '/b', 'A overwrote B');
+  api.closeFileViewer();
+  assert.strictEqual(secondCleanup, 1);
+  assert.ok(revoked.includes('blob:b'));
+  const third=deferred(); let thirdCleanup=0;
+  api.registerFileViewerRenderer('pdf', () => third.promise);
+  const openC=api.openFileViewer({name:'c.pdf', extension:'pdf', previewUrl:'/c', downloadUrl:'/dc'});
+  api.resetFileViewer();
+  third.resolve({cleanup:()=>thirdCleanup++, objectUrl:'blob:c'});
+  await openC;
+  assert.strictEqual(thirdCleanup, 1);
+  assert.ok(revoked.includes('blob:c'));
+  assert.strictEqual(element('file-viewer-modal').dataset.state, undefined);
+  assert.strictEqual(element('file-viewer-status').textContent, '');
+  const fourth=deferred();
+  api.registerFileViewerRenderer('pdf', () => fourth.promise);
+  const openD=api.openFileViewer({name:'d.pdf', extension:'pdf', previewUrl:'/d', downloadUrl:'/dd'});
+  api.closeFileViewer(); fourth.reject(new Error('late failure')); await openD;
+  assert.strictEqual(element('file-viewer-modal').dataset.state, undefined, 'late rejection changed closed UI');
+})().catch(error=>{console.error(error);process.exitCode=1;});
+"""
+        result = subprocess.run([str(node), "-e", harness, str(viewer_script)], cwd=ROOT, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr or "stale renderer race failed")
+
+    def test_escape_closes_viewer_and_restores_focus(self):
+        node = node_executable()
+        self.assertIsNotNone(node, "Node runtime missing; set NODE_EXE or install node")
+        viewer_script = ROOT / "static/js" / "file-viewers.js"
+        harness = r"""
+const fs=require('fs'),vm=require('vm'),assert=require('assert'); const elements=new Map(), listeners={};
+function element(id){if(!elements.has(id))elements.set(id,{id,dataset:{},style:{},hidden:false,href:'',onclick:null,textContent:'',innerHTML:'',focus(){document.activeElement=this;},addEventListener(){},removeEventListener(){},querySelectorAll(){return[];}});return elements.get(id);}
+const trigger=element('trigger'); const document={activeElement:trigger,getElementById:element,querySelector:s=>element(s.replace(/^#/,'')),addEventListener(t,f){(listeners[t]||=[]).push(f);}};
+const context={console,module:{exports:{}},exports:{},document,window:{},globalThis:null,URL:{revokeObjectURL(){}},location:{assign(){}},setTimeout,clearTimeout};context.globalThis=context;context.window.location=context.location;
+vm.createContext(context);vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),context);const api=context.module.exports;
+api.registerFileViewerRenderer('pdf',()=>Promise.resolve());
+(async()=>{await api.openFileViewer({name:'x.pdf',extension:'pdf',downloadUrl:'/d'});assert.ok((listeners.keydown||[]).length,'Escape listener missing');
+for(const fn of listeners.keydown)fn({key:'Escape'});assert.strictEqual(element('file-viewer-modal').hidden,true);assert.strictEqual(document.activeElement,trigger);})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+        result = subprocess.run([str(node), "-e", harness, str(viewer_script)], cwd=ROOT, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr or "Escape lifecycle failed")
+
+    def test_preview_functions_are_unique_and_switch_viewer_modes(self):
+        self.assertEqual(len(re.findall(r"function\s+previewFile\s*\(", TEMPLATE)), 1)
+        self.assertEqual(len(re.findall(r"function\s+previewDrawing\s*\(", TEMPLATE)), 1)
+        for function_name in ("previewFile", "previewDrawing"):
+            match = re.search(rf"function\s+{function_name}\s*\([^)]*\)\s*\{{([\s\S]*?)\n\}}", TEMPLATE)
+            self.assertIsNotNone(match)
+            body = match.group(1)
+            self.assertNotIn("window.open", body)
+            self.assertRegex(body, r"\b(?:resetFileViewer|closeFileViewer)\s*\(")
+            self.assertRegex(body, r"location\.assign\([^)]*download")
+
     def test_release_expectations(self):
         version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
         manifest = (ROOT / "android-xinggui" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")

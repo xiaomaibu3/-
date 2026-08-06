@@ -1,7 +1,7 @@
 (function (root) {
     'use strict';
 
-    const state = { file: null, viewerType: null, objectUrl: null, cleanup: [], previousFocus: null, modalListener: null };
+    const state = { file: null, viewerType: null, objectUrl: null, cleanup: [], previousFocus: null, modalListener: null, generation: 0 };
     const supported = { pdf: 'pdf', docx: 'word', stp: 'cad', step: 'cad' };
     const unsupported = new Set(['doc', 'x_t', 'x_b']);
     const renderers = Object.create(null);
@@ -77,6 +77,7 @@
         if (hooks && hooks.setFallback) hooks.setFallback(message, state.file);
     }
     function resetFileViewer(restoreFocus = true) {
+        state.generation += 1;
         state.cleanup.splice(0).forEach(cleanup => { try { cleanup(); } catch (error) {} });
         if (state.modalListener) {
             const modal = element('file-viewer-modal');
@@ -99,11 +100,21 @@
         if (typeof result === 'function') return { cleanup: result };
         return result || {};
     }
+    function disposeRendererResult(rendered) {
+        if (rendered.cleanup) { try { rendered.cleanup(); } catch (error) {} }
+        if (rendered.objectUrl && root.URL && root.URL.revokeObjectURL) root.URL.revokeObjectURL(rendered.objectUrl);
+    }
+    function isCurrentRequest(generation, file) {
+        return state.generation === generation && state.file === file;
+    }
     async function openFileViewer(file) {
-        state.previousFocus = root.document && root.document.activeElement;
+        const modalWasOpen = Boolean(state.file);
+        const opener = modalWasOpen ? state.previousFocus : root.document && root.document.activeElement;
         resetFileViewer(false);
-        state.previousFocus = state.previousFocus || (root.document && root.document.activeElement);
+        state.previousFocus = opener;
         state.file = file || {};
+        const requestFile = state.file;
+        const requestGeneration = state.generation;
         const ext = extension(state.file);
         state.viewerType = supported[ext] || null;
         const modal = element('file-viewer-modal');
@@ -126,16 +137,25 @@
             if (!renderer) { showFallback('Viewer not ready. Download the source.'); return state; }
             const result = renderer(target, state.file);
             const rendered = rendererResult(await Promise.resolve(result));
+            if (!isCurrentRequest(requestGeneration, requestFile)) { disposeRendererResult(rendered); return state; }
             if (rendered.cleanup) state.cleanup.push(rendered.cleanup);
             if (rendered.objectUrl) state.objectUrl = rendered.objectUrl;
             if (target && target.dataset) { target.dataset.fileName = state.file.fileName || state.file.name || ''; target.dataset.previewUrl = state.file.previewUrl || ''; }
             setState('ready');
-        } catch (error) { showFallback('Preview failed. Download the source.'); }
+        } catch (error) {
+            if (isCurrentRequest(requestGeneration, requestFile)) showFallback('Preview failed. Download the source.');
+        }
         return state;
     }
     function closeFileViewer() { resetFileViewer(); }
     function downloadFileViewerSource() { const target = downloadTarget(state.file); const link = element('file-viewer-download'); if (link) link.href = target || ''; return Boolean(target); }
     function registerFileViewerRenderer(type, renderer) { if (type && typeof renderer === 'function') renderers[type] = renderer; return renderer; }
+
+    if (root.document && root.document.addEventListener) {
+        root.document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && state.file) closeFileViewer();
+        });
+    }
 
     Object.assign(root, { openFileViewer, closeFileViewer, resetFileViewer, downloadFileViewerSource, registerFileViewerRenderer });
     if (root.window) Object.assign(root.window, { openFileViewer, closeFileViewer, resetFileViewer, downloadFileViewerSource, registerFileViewerRenderer });
