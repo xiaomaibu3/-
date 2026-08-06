@@ -34,19 +34,29 @@ def balanced_block(source, opening):
     raise AssertionError("unbalanced JavaScript/CSS block")
 
 
-def dispatcher_body(source):
-    match = re.search(r"function\s+dispatchFileViewer\s*\([^)]*\)\s*\{", source)
-    if not match:
-        raise AssertionError("missing dispatchFileViewer function")
-    return balanced_block(source, source.find("{", match.start()))
+def viewer_dispatch_fragments(source):
+    fragments = []
+    function_start = re.compile(
+        r"(?:function\s+\w+\s*\([^)]*\)|(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>)\s*\{",
+        re.IGNORECASE,
+    )
+    for match in function_start.finditer(source):
+        fragments.append(balanced_block(source, source.find("{", match.start())))
+    # Also recognize concise object-map entries without requiring a map name.
+    fragments.extend(re.findall(
+        r"(?:['\"]?\w+['\"]?\s*:\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>\s*[^,}\n]*openFileViewer\s*\([^,}\n]*\))",
+        source,
+        re.IGNORECASE,
+    ))
+    return fragments
 
 
-def switch_case(body, extension):
-    match = re.search(rf"case\s+['\"]{extension}['\"]\s*:", body, re.IGNORECASE)
-    if not match:
-        raise AssertionError(f"missing dispatcher case: {extension}")
-    end = re.search(r"\bcase\s+['\"]|\bdefault\s*:", body[match.end():], re.IGNORECASE)
-    return body[match.end(): match.end() + end.start() if end else len(body)]
+def extension_dispatch_fragment(source, extension):
+    fragments = viewer_dispatch_fragments(source)
+    for fragment in fragments:
+        if re.search(rf"['\"]\.?{extension}['\"]", fragment, re.IGNORECASE) and re.search(r"openFileViewer\s*\(", fragment):
+            return fragment
+    raise AssertionError(f"no direct viewer dispatch fragment for .{extension}")
 
 
 def media_blocks(source):
@@ -71,15 +81,14 @@ class DocumentViewerContractTest(unittest.TestCase):
             self.assertIn(marker, TEMPLATE)
 
     def test_dispatcher_cases_call_open_file_viewer_for_supported_extensions(self):
-        body = dispatcher_body(runtime_source())
-        self.assertRegex(body, r"switch\s*\(\s*extension\s*\)")
+        source = runtime_source()
         for extension in ("pdf", "docx", "stp", "step"):
-            self.assertRegex(switch_case(body, extension), r"openFileViewer\s*\(")
+            extension_dispatch_fragment(source, extension)
 
     def test_dispatcher_cases_download_legacy_doc_and_xt_with_prompts(self):
-        body = dispatcher_body(runtime_source())
+        source = runtime_source()
         for extension in ("doc", "x_t", "x_b"):
-            case = switch_case(body, extension)
+            case = extension_dispatch_fragment(source, extension)
             self.assertRegex(case, r"downloadFileViewerSource\s*\(")
             self.assertRegex(case, r"fallback|unsupported|旧版|不支持", re.IGNORECASE)
 
@@ -104,19 +113,27 @@ class DocumentViewerContractTest(unittest.TestCase):
     def test_viewer_rules_are_inside_max_width_media_blocks(self):
         blocks = [body for header, body in media_blocks(CSS)]
         self.assertTrue(blocks, "missing max-width media block")
-        viewer_blocks = [
-            block for block in blocks
-            if all(selector in block for selector in (".file-viewer-modal", ".file-viewer-toolbar", ".cad-viewer"))
-        ]
-        self.assertTrue(viewer_blocks, "viewer rules are not in one max-width media block")
-        block = viewer_blocks[0]
-        modal = css_rule(block, ".file-viewer-modal")
-        toolbar = css_rule(block, ".file-viewer-toolbar")
-        cad = css_rule(block, ".cad-viewer")
-        canvas = css_rule(block, ".cad-viewer canvas")
+        selectors = (".file-viewer-modal", ".file-viewer-toolbar", ".pdf-viewer", ".word-viewer", ".cad-viewer")
+        rules = {}
+        for selector in selectors:
+            matching_blocks = [block for block in blocks if selector in block]
+            self.assertTrue(matching_blocks, f"{selector} is not in a max-width media block")
+            rules[selector] = css_rule(matching_blocks[0], selector)
+        cad_blocks = [block for block in blocks if ".cad-viewer canvas" in block]
+        self.assertTrue(cad_blocks, ".cad-viewer canvas is not in a max-width media block")
+        canvas = css_rule(cad_blocks[0], ".cad-viewer canvas")
+        modal = rules[".file-viewer-modal"]
+        toolbar = rules[".file-viewer-toolbar"]
+        pdf = rules[".pdf-viewer"]
+        word = rules[".word-viewer"]
+        cad = rules[".cad-viewer"]
         self.assertRegex(modal, r"(?:min-height|height|aspect-ratio)\s*:")
         self.assertRegex(modal, r"overflow\s*:")
         self.assertRegex(toolbar, r"(?:min-height|height)\s*:")
+        self.assertRegex(pdf, r"(?:min-height|height|aspect-ratio)\s*:")
+        self.assertRegex(pdf, r"overflow\s*:")
+        self.assertRegex(word, r"(?:min-height|height|aspect-ratio)\s*:")
+        self.assertRegex(word, r"overflow\s*:")
         self.assertRegex(cad, r"overflow\s*:\s*(?:hidden|auto)")
         self.assertRegex(canvas, r"width\s*:\s*100%")
         self.assertRegex(canvas, r"height\s*:\s*100%")
