@@ -104,7 +104,26 @@
     </div>
 </div>
 
+<div class="file-viewer-modal" id="file-viewer-modal" role="dialog" aria-modal="true" aria-labelledby="file-viewer-title" hidden>
+    <div class="file-viewer-shell">
+        <div class="file-viewer-toolbar">
+            <h2 id="file-viewer-title">文件预览</h2>
+            <div class="file-viewer-actions">
+                <a class="btn btn-sm" id="file-viewer-download" href="#" download>下载</a>
+                <button class="btn btn-sm" type="button" onclick="closeFileViewer()">关闭</button>
+            </div>
+        </div>
+        <div class="file-viewer-status" id="file-viewer-status" role="status" aria-live="polite"></div>
+        <div class="file-viewer-root" id="file-viewer-root">
+            <div class="pdf-viewer" id="pdf-viewer" hidden></div>
+            <div class="word-viewer" id="word-viewer" hidden></div>
+            <div class="cad-viewer" id="cad-viewer" hidden></div>
+        </div>
+    </div>
+</div>
+
 <script src="/static/js/app.js"></script>
+<script src="/static/js/file-viewers.js"></script>
 <script src="/static/js/pwa.js"></script>
 <script>
 // ── 仪表盘 ──────────────────────────────────────────────────
@@ -976,36 +995,7 @@ async function uploadNewVersion(did, pid) {
 function previewDrawing(did, filePath, drawingName) {
     const ext = filePath.split('.').pop().toLowerCase();
     const previewUrl = `/api/drawings/${did}/preview`;
-
-    if (ext === 'pdf') {
-        // PDF: 新标签页查看
-        window.open(previewUrl, '_blank');
-    } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
-        // 图片: 弹窗查看
-        $('#modal-title').textContent = drawingName;
-        $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" style="max-width:100%;max-height:70vh;border-radius:var(--radius)"></div>`;
-        $('#modal-footer').innerHTML = `<a class="btn" href="/api/drawings/${did}/download">下载原文件</a> <button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
-        showModal('modal-main');
-    } else if (['dwg', 'stp', 'step', 'dxf'].includes(ext)) {
-        // DWG/STP: 提供下载（浏览器无法直接渲染）
-        $('#modal-title').textContent = `图纸预览 - ${drawingName}`;
-        $('#modal-body').innerHTML = `
-            <div style="text-align:center;padding:24px">
-                <div style="font-size:48px;margin-bottom:16px">📐</div>
-                <h3 style="margin-bottom:8px">${drawingName}</h3>
-                <p style="color:var(--text-muted);margin-bottom:4px">文件格式: <strong>${ext.toUpperCase()}</strong></p>
-                <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px">
-                    ${ext === 'dwg' ? 'DWG 格式需要使用 AutoCAD 或兼容软件打开' : 'STP/STEP 格式需要使用 3D CAD 软件打开'}
-                </p>
-                <a class="btn btn-primary" href="/api/drawings/${did}/download" style="margin-right:8px">⬇ 下载文件</a>
-            </div>
-        `;
-        $('#modal-footer').innerHTML = `<button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
-        showModal('modal-main');
-    } else {
-        // 其他格式: 尝试新标签页
-        window.open(previewUrl, '_blank');
-    }
+    return openFileViewer({name: drawingName || filePath, fileName: filePath, extension: ext, previewUrl, downloadUrl: `/api/drawings/${did}/download`});
 }
 
 // ── 图纸批量上传 ──────────────────────────────────────────────
@@ -2253,20 +2243,7 @@ async function filterProjectFiles(pid, category) {
 function previewFile(fid, fileName) {
     const ext = fileName.split('.').pop().toLowerCase();
     const previewUrl = `/api/files/${fid}/preview`;
-
-    if (ext === 'pdf') {
-        // PDF：新标签页内嵌查看
-        window.open(previewUrl, '_blank');
-    } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
-        // 图片：弹窗查看
-        $('#modal-title').textContent = fileName;
-        $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" style="max-width:100%;max-height:70vh;border-radius:var(--radius)"></div>`;
-        $('#modal-footer').innerHTML = `<a class="btn" href="/api/files/${fid}/download">下载原文件</a> <button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
-        showModal('modal-main');
-    } else {
-        // 其他文件：新标签页尝试查看
-        window.open(previewUrl, '_blank');
-    }
+    return openFileViewer({name: fileName, fileName, extension: ext, previewUrl, downloadUrl: `/api/files/${fid}/download`});
 }
 </script>
 </body>
