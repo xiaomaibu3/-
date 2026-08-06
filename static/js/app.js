@@ -97,20 +97,26 @@ async function renderPageContent(content, page, params, previousPage) {
     if (!routes[page]) return;
 
     if (prefersReducedMotion() || !previousPage || previousPage === page) {
-        await routes[page](content, params);
-        content.classList.remove('page-transition-out', 'page-transition-in');
+        try {
+            await routes[page](content, params);
+        } finally {
+            content.classList.remove('page-transition-out', 'page-transition-in');
+        }
         return;
     }
 
     content.classList.remove('page-transition-in');
     content.classList.add('page-transition-out');
-    await waitForTransition(PAGE_TRANSITION_MS);
-
-    await routes[page](content, params);
-
-    content.classList.remove('page-transition-out');
-    content.classList.add('page-transition-in');
-    window.setTimeout(() => content.classList.remove('page-transition-in'), PAGE_TRANSITION_MS + 80);
+    try {
+        await waitForTransition(PAGE_TRANSITION_MS);
+        await routes[page](content, params);
+        content.classList.remove('page-transition-out');
+        content.classList.add('page-transition-in');
+        window.setTimeout(() => content.classList.remove('page-transition-in'), PAGE_TRANSITION_MS + 80);
+    } catch (error) {
+        content.classList.remove('page-transition-out', 'page-transition-in');
+        throw error;
+    }
 }
 
 async function navigateTo(page, params = {}) {

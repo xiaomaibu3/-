@@ -130,6 +130,14 @@ class XingguiMobileAppTest(unittest.TestCase):
         self.assertIn("@keyframes pageEnter", css)
         self.assertIn("@media (prefers-reduced-motion: reduce)", css)
 
+    def test_page_transitions_do_not_disable_clicks_on_content(self):
+        css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        app_js = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
+
+        self.assertNotIn("pointer-events: none;", css)
+        self.assertIn("try {", app_js)
+        self.assertIn("finally", app_js)
+
     def test_service_worker_cache_version_updates_for_animation_assets(self):
         service_worker = (ROOT / "static" / "service-worker.js").read_text(encoding="utf-8")
 

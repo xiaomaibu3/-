@@ -52,7 +52,6 @@ body {
     opacity: 0;
     transform: translateY(8px) scale(0.995);
     transition: opacity 160ms ease, transform 160ms ease;
-    pointer-events: none;
 }
 
 .page-transition-in {
