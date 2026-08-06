@@ -1,7 +1,7 @@
 {
   "name": "星轨",
   "short_name": "星轨",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "星轨项目管理系统移动端",
   "start_url": "/",
   "scope": "/",

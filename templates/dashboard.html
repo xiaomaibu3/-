@@ -381,7 +381,13 @@ async function createProject() {
 }
 
 async function deleteProject(id) {
-    if (!confirm('确定删除该项目？')) return;
+    const confirmed = await showConfirmDialog({
+        title: '删除项目',
+        message: '确定删除此项目？',
+        confirmText: '删除',
+        danger: true
+    });
+    if (!confirmed) return;
     const res = await api(`/api/projects/${id}`, { method: 'DELETE' });
     if (res && res.success) {
         toast('项目已删除');

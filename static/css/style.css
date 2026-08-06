@@ -605,6 +605,16 @@ tr:last-child td {
     overflow-y: auto;
 }
 
+.confirm-dialog {
+    max-width: 420px;
+}
+
+.confirm-message {
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1.6;
+}
+
 .modal-header {
     padding: 20px 24px;
     border-bottom: 1px solid var(--border);

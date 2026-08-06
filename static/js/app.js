@@ -76,6 +76,54 @@ function hideModal(id) {
     if (modal) modal.classList.remove('active');
 }
 
+function showConfirmDialog({
+    title = '请确认',
+    message,
+    confirmText = '确定',
+    cancelText = '取消',
+    danger = false
+}) {
+    return new Promise(resolve => {
+        const modal = $('#modal-main');
+        const panel = modal?.querySelector('.modal');
+        const titleEl = $('#modal-title');
+        const bodyEl = $('#modal-body');
+        const footerEl = $('#modal-footer');
+
+        if (!modal || !panel || !titleEl || !bodyEl || !footerEl) {
+            resolve(false);
+            return;
+        }
+
+        const finish = confirmed => {
+            panel.classList.remove('confirm-dialog');
+            hideModal('modal-main');
+            resolve(confirmed);
+        };
+
+        panel.classList.add('confirm-dialog');
+        titleEl.textContent = title;
+        bodyEl.innerHTML = `<p class="confirm-message">${message}</p>`;
+        footerEl.innerHTML = '';
+
+        const cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'btn';
+        cancelButton.textContent = cancelText;
+        cancelButton.addEventListener('click', () => finish(false));
+
+        const confirmButton = document.createElement('button');
+        confirmButton.type = 'button';
+        confirmButton.className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+        confirmButton.textContent = confirmText;
+        confirmButton.addEventListener('click', () => finish(true));
+
+        footerEl.append(cancelButton, confirmButton);
+        showModal('modal-main');
+        confirmButton.focus();
+    });
+}
+
 // ── 页面路由 ──────────────────────────────────────────────────
 const routes = {};
 let currentPage = '';

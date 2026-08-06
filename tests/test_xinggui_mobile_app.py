@@ -64,13 +64,13 @@ class XingguiMobileAppTest(unittest.TestCase):
         web_manifest = json.loads((ROOT / "static" / "manifest.webmanifest").read_text(encoding="utf-8"))
         service_worker = (ROOT / "static" / "service-worker.js").read_text(encoding="utf-8")
 
-        self.assertEqual(APP_VERSION, "1.0.3")
+        self.assertEqual(APP_VERSION, "1.0.4")
         self.assertIn("APP_VERSION", app_py)
         self.assertIn("'app_version': APP_VERSION", app_py)
         self.assertIn("系统版本", dashboard)
         self.assertIn("${cfg.app_version || '未知'}", dashboard)
         self.assertIn(f'android:versionName="{APP_VERSION}"', manifest)
-        self.assertIn('android:versionCode="4"', manifest)
+        self.assertIn('android:versionCode="5"', manifest)
         self.assertEqual(web_manifest["version"], APP_VERSION)
         self.assertIn(f"xinggui-pwa-{APP_VERSION}", service_worker)
 
@@ -180,6 +180,21 @@ class XingguiMobileAppTest(unittest.TestCase):
         self.assertNotIn("pointer-events: none;", css)
         self.assertIn("try {", app_js)
         self.assertIn("finally", app_js)
+
+    def test_project_delete_uses_in_app_confirm_dialog_on_mobile(self):
+        dashboard = (ROOT / "templates" / "dashboard.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+
+        project_delete = dashboard[dashboard.index("async function deleteProject"):dashboard.index("// ── 项目详情")]
+        self.assertIn("showConfirmDialog", app_js)
+        self.assertIn("confirm-dialog", app_js)
+        self.assertIn("btn-danger", app_js)
+        self.assertIn("确定删除此项目？", project_delete)
+        self.assertNotIn("confirm(", project_delete)
+        self.assertNotIn("window.confirm", app_js)
+        self.assertIn(".confirm-dialog", css)
+        self.assertIn(".confirm-message", css)
 
     def test_service_worker_cache_version_updates_for_animation_assets(self):
         service_worker = (ROOT / "static" / "service-worker.js").read_text(encoding="utf-8")
