@@ -64,13 +64,13 @@ class XingguiMobileAppTest(unittest.TestCase):
         web_manifest = json.loads((ROOT / "static" / "manifest.webmanifest").read_text(encoding="utf-8"))
         service_worker = (ROOT / "static" / "service-worker.js").read_text(encoding="utf-8")
 
-        self.assertEqual(APP_VERSION, "1.0.5")
+        self.assertEqual(APP_VERSION, "1.0.6")
         self.assertIn("APP_VERSION", app_py)
         self.assertIn("'app_version': APP_VERSION", app_py)
         self.assertIn("系统版本", dashboard)
         self.assertIn("${cfg.app_version || '未知'}", dashboard)
         self.assertIn(f'android:versionName="{APP_VERSION}"', manifest)
-        self.assertIn('android:versionCode="6"', manifest)
+        self.assertIn('android:versionCode="7"', manifest)
         self.assertEqual(web_manifest["version"], APP_VERSION)
         self.assertIn(f"xinggui-pwa-{APP_VERSION}", service_worker)
 
