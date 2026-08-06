@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+import subprocess
 import unittest
 
 
@@ -7,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = (ROOT / "templates" / "dashboard.html").read_text(encoding="utf-8")
 CSS = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
 APP = (ROOT / "app.py").read_text(encoding="utf-8")
+NODE = Path(r"C:\Users\yelei\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe")
 
 
 def without_comments(source):
@@ -34,31 +36,6 @@ def balanced_block(source, opening):
     raise AssertionError("unbalanced JavaScript/CSS block")
 
 
-def viewer_dispatch_fragments(source):
-    fragments = []
-    function_start = re.compile(
-        r"(?:function\s+\w+\s*\([^)]*\)|(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>)\s*\{",
-        re.IGNORECASE,
-    )
-    for match in function_start.finditer(source):
-        fragments.append(balanced_block(source, source.find("{", match.start())))
-    # Also recognize concise object-map entries without requiring a map name.
-    fragments.extend(re.findall(
-        r"(?:['\"]?\w+['\"]?\s*:\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>\s*[^,}\n]*openFileViewer\s*\([^,}\n]*\))",
-        source,
-        re.IGNORECASE,
-    ))
-    return fragments
-
-
-def extension_dispatch_fragment(source, extension):
-    fragments = viewer_dispatch_fragments(source)
-    for fragment in fragments:
-        if re.search(rf"['\"]\.?{extension}['\"]", fragment, re.IGNORECASE) and re.search(r"openFileViewer\s*\(", fragment):
-            return fragment
-    raise AssertionError(f"no direct viewer dispatch fragment for .{extension}")
-
-
 def media_blocks(source):
     source = without_comments(source)
     blocks = []
@@ -80,17 +57,73 @@ class DocumentViewerContractTest(unittest.TestCase):
         for marker in ("openFileViewer", "pdf-viewer", "word-viewer", "cad-viewer"):
             self.assertIn(marker, TEMPLATE)
 
-    def test_dispatcher_cases_call_open_file_viewer_for_supported_extensions(self):
-        source = runtime_source()
-        for extension in ("pdf", "docx", "stp", "step"):
-            extension_dispatch_fragment(source, extension)
+    def test_file_viewer_dispatcher_routes_extensions_by_behavior(self):
+        self.assertTrue(NODE.is_file(), f"Node runtime not found: {NODE}")
+        viewer_script = ROOT / "static" / "js" / "file-viewers.js"
+        harness = r"""
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
 
-    def test_dispatcher_cases_download_legacy_doc_and_xt_with_prompts(self):
-        source = runtime_source()
-        for extension in ("doc", "x_t", "x_b"):
-            case = extension_dispatch_fragment(source, extension)
-            self.assertRegex(case, r"downloadFileViewerSource\s*\(")
-            self.assertRegex(case, r"fallback|unsupported|旧版|不支持", re.IGNORECASE)
+const fileName = process.argv[1];
+const calls = [];
+const openSpy = (...args) => calls.push({ type: 'open', args });
+const downloadSpy = (...args) => calls.push({ type: 'download', args });
+const context = {
+  console,
+  module: { exports: {} },
+  exports: {},
+  window: {},
+  document: {},
+  openFileViewer: openSpy,
+  downloadFileViewerSource: downloadSpy,
+};
+context.window.openFileViewer = openSpy;
+context.window.downloadFileViewerSource = downloadSpy;
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(fileName, 'utf8'), context, { filename: fileName });
+
+const exported = context.module.exports;
+const dispatcher =
+  exported.fileViewerDispatcher ||
+  exported.dispatchFileViewer ||
+  context.fileViewerDispatcher ||
+  context.dispatchFileViewer ||
+  context.window.fileViewerDispatcher ||
+  context.window.dispatchFileViewer;
+assert.strictEqual(typeof dispatcher, 'function', 'file viewer dispatcher API is not exported');
+
+function invoke(extension) {
+  calls.length = 0;
+  const file = { extension, name: `contract.${extension}` };
+  dispatcher(extension, file, {
+    openFileViewer: openSpy,
+    downloadFileViewerSource: downloadSpy,
+  });
+}
+
+for (const extension of ['pdf', 'docx', 'stp', 'step']) {
+  invoke(extension);
+  assert.strictEqual(calls.filter(call => call.type === 'open').length, 1, `${extension} must call openFileViewer once`);
+  assert.strictEqual(calls.filter(call => call.type === 'download').length, 0, `${extension} must not download`);
+}
+
+for (const extension of ['doc', 'x_t', 'x_b']) {
+  invoke(extension);
+  assert.strictEqual(calls.filter(call => call.type === 'open').length, 0, `${extension} must not call openFileViewer`);
+  assert.strictEqual(calls.filter(call => call.type === 'download').length, 1, `${extension} must call downloadFileViewerSource once`);
+}
+"""
+        result = subprocess.run(
+            [str(NODE), "-e", harness, str(viewer_script)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
     def test_local_viewer_assets_exist_and_runtime_references_are_local(self):
         source = runtime_source()
@@ -122,19 +155,14 @@ class DocumentViewerContractTest(unittest.TestCase):
         cad_blocks = [block for block in blocks if ".cad-viewer canvas" in block]
         self.assertTrue(cad_blocks, ".cad-viewer canvas is not in a max-width media block")
         canvas = css_rule(cad_blocks[0], ".cad-viewer canvas")
-        modal = rules[".file-viewer-modal"]
-        toolbar = rules[".file-viewer-toolbar"]
-        pdf = rules[".pdf-viewer"]
-        word = rules[".word-viewer"]
-        cad = rules[".cad-viewer"]
-        self.assertRegex(modal, r"(?:min-height|height|aspect-ratio)\s*:")
-        self.assertRegex(modal, r"overflow\s*:")
-        self.assertRegex(toolbar, r"(?:min-height|height)\s*:")
-        self.assertRegex(pdf, r"(?:min-height|height|aspect-ratio)\s*:")
-        self.assertRegex(pdf, r"overflow\s*:")
-        self.assertRegex(word, r"(?:min-height|height|aspect-ratio)\s*:")
-        self.assertRegex(word, r"overflow\s*:")
-        self.assertRegex(cad, r"overflow\s*:\s*(?:hidden|auto)")
+        self.assertRegex(rules[".file-viewer-modal"], r"(?:min-height|height|aspect-ratio)\s*:")
+        self.assertRegex(rules[".file-viewer-modal"], r"overflow\s*:")
+        self.assertRegex(rules[".file-viewer-toolbar"], r"(?:min-height|height)\s*:")
+        self.assertRegex(rules[".pdf-viewer"], r"(?:min-height|height|aspect-ratio)\s*:")
+        self.assertRegex(rules[".pdf-viewer"], r"overflow\s*:")
+        self.assertRegex(rules[".word-viewer"], r"(?:min-height|height|aspect-ratio)\s*:")
+        self.assertRegex(rules[".word-viewer"], r"overflow\s*:")
+        self.assertRegex(rules[".cad-viewer"], r"overflow\s*:\s*(?:hidden|auto)")
         self.assertRegex(canvas, r"width\s*:\s*100%")
         self.assertRegex(canvas, r"height\s*:\s*100%")
         self.assertRegex(canvas, r"touch-action\s*:")
