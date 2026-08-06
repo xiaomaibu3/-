@@ -4,6 +4,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+APP_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 class XingguiMobileAppTest(unittest.TestCase):
@@ -55,6 +56,30 @@ class XingguiMobileAppTest(unittest.TestCase):
         self.assertIn("setJavaScriptEnabled(true)", activity)
         self.assertIn("setDomStorageEnabled(true)", activity)
         self.assertIn("new WebViewClient()", activity)
+
+    def test_app_version_is_visible_and_shared_across_web_and_android(self):
+        app_py = (ROOT / "app.py").read_text(encoding="utf-8")
+        dashboard = (ROOT / "templates" / "dashboard.html").read_text(encoding="utf-8")
+        manifest = (ROOT / "android-xinggui" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
+        web_manifest = json.loads((ROOT / "static" / "manifest.webmanifest").read_text(encoding="utf-8"))
+        service_worker = (ROOT / "static" / "service-worker.js").read_text(encoding="utf-8")
+
+        self.assertEqual(APP_VERSION, "1.0.1")
+        self.assertIn("APP_VERSION", app_py)
+        self.assertIn("'app_version': APP_VERSION", app_py)
+        self.assertIn("系统版本", dashboard)
+        self.assertIn("${cfg.app_version || '未知'}", dashboard)
+        self.assertIn(f'android:versionName="{APP_VERSION}"', manifest)
+        self.assertIn('android:versionCode="2"', manifest)
+        self.assertEqual(web_manifest["version"], APP_VERSION)
+        self.assertIn(f"xinggui-pwa-{APP_VERSION}", service_worker)
+
+    def test_android_build_validates_manifest_version_against_shared_version_file(self):
+        build_script = (ROOT / "android-xinggui" / "build-apk.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("..\\VERSION", build_script)
+        self.assertIn("versionName", build_script)
+        self.assertIn("does not match VERSION", build_script)
 
     def test_android_wrapper_uses_system_auth_for_local_credential_login(self):
         manifest = (ROOT / "android-xinggui" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
@@ -149,7 +174,7 @@ class XingguiMobileAppTest(unittest.TestCase):
     def test_service_worker_cache_version_updates_for_animation_assets(self):
         service_worker = (ROOT / "static" / "service-worker.js").read_text(encoding="utf-8")
 
-        self.assertIn("xinggui-pwa-v4", service_worker)
+        self.assertIn(f"xinggui-pwa-{APP_VERSION}", service_worker)
 
     def test_android_wrapper_refreshes_web_assets_after_mobile_click_fixes(self):
         activity = (ROOT / "android-xinggui" / "app" / "src" / "main" / "java" / "com" / "xinggui" / "app" / "MainActivity.java").read_text(encoding="utf-8")

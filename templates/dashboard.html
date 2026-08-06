@@ -2078,6 +2078,10 @@ registerPage('settings', async (el) => {
             <div class="card-header"><span class="card-title">基本设置</span></div>
             <div class="card-body">
                 <div class="form-group">
+                    <label class="form-label">系统版本</label>
+                    <input type="text" class="form-input" value="${cfg.app_version || '未知'}" readonly>
+                </div>
+                <div class="form-group">
                     <label class="form-label">数据根目录</label>
                     <input type="text" class="form-input" id="s-data-root" value="${cfg.data_root || ''}">
                 </div>

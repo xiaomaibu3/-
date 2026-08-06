@@ -25,6 +25,9 @@ from utils.file_utils import (
     save_drawing_file, move_to_history, get_file_size_str
 )
 
+APP_VERSION = (os.environ.get('XINGGUI_APP_VERSION') or
+               open(os.path.join(os.path.dirname(__file__), 'VERSION'), encoding='utf-8').read().strip())
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(24)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -1111,6 +1114,7 @@ def api_dashboard_stats():
 @login_required
 def api_settings_get():
     return jsonify({
+        'app_version': APP_VERSION,
         'data_root': config.data_root,
         'project_number_rule': config.get('general', 'project_number_rule'),
         'project_types': config.get_project_types(),

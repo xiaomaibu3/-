@@ -8,6 +8,8 @@ $platformJar = Join-Path $sdkRoot "platforms\android-35\android.jar"
 $out = Join-Path $root "build"
 $app = Join-Path $root "app\src\main"
 $pkg = "com.xinggui.app"
+$versionFile = Join-Path $root "..\VERSION"
+$manifestFile = Join-Path $app "AndroidManifest.xml"
 
 $javac = Join-Path $javaHome "bin\javac.exe"
 $aapt2 = Join-Path $buildTools "aapt2.exe"
@@ -28,6 +30,16 @@ foreach ($tool in @($javac, $aapt2, $d8, $zipalign, $apksigner, $keytool, $platf
   }
 }
 
+$appVersion = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+$manifestText = Get-Content -LiteralPath $manifestFile -Raw
+if ($manifestText -notmatch 'android:versionName="([^"]+)"') {
+  throw "AndroidManifest.xml is missing android:versionName"
+}
+$manifestVersion = $Matches[1]
+if ($manifestVersion -ne $appVersion) {
+  throw "Android versionName $manifestVersion does not match VERSION $appVersion"
+}
+
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 Remove-Item -LiteralPath (Join-Path $out "compiled") -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath (Join-Path $out "classes") -Recurse -Force -ErrorAction SilentlyContinue
@@ -36,7 +48,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $out "compiled"), (Join-Pat
 
 & $aapt2 compile --dir (Join-Path $app "res") -o (Join-Path $out "compiled\res.zip")
 Assert-LastExit "aapt2 compile"
-& $aapt2 link -o (Join-Path $out "xinggui-unsigned.apk") -I $platformJar --manifest (Join-Path $app "AndroidManifest.xml") -R (Join-Path $out "compiled\res.zip") --java (Join-Path $out "gen") --auto-add-overlay
+& $aapt2 link -o (Join-Path $out "xinggui-unsigned.apk") -I $platformJar --manifest $manifestFile -R (Join-Path $out "compiled\res.zip") --java (Join-Path $out "gen") --auto-add-overlay
 Assert-LastExit "aapt2 link"
 
 $javaFiles = @(
