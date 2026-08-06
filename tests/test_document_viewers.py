@@ -250,13 +250,25 @@ const files = Object.fromEntries(['pdf','docx','stp','step','doc','x_t','x_b'].m
 
     def test_viewer_asset_fetch_script_is_staged_and_hash_pinned(self):
         script = (ROOT / "scripts/fetch-viewer-assets.ps1").read_text(encoding="utf-8")
-        self.assertIn('.viewer-assets-staging-$PID', script)
+        self.assertIn("[guid]::NewGuid().ToString('N')", script)
+        self.assertIn('.viewer-assets-staging-$operationId', script)
+        self.assertIn('.viewer-assets-backup-$operationId', script)
         self.assertIn("Get-FileHash -LiteralPath $destination -Algorithm SHA256", script)
         self.assertGreaterEqual(len(re.findall(r"Sha256\s*=\s*'[0-9A-F]{64}'", script)), 10)
-        self.assertIn("New-Object System.Text.UTF8Encoding($false)", script)
+        self.assertIn("[Text.UTF8Encoding]::new($false, $true)", script)
         self.assertIn("Invalid WASM header", script)
         self.assertIn("HTML error page downloaded", script)
-        self.assertLess(script.index("foreach ($asset in $assets)"), script.index("Move-Item -LiteralPath $staging -Destination $vendor"))
+        self.assertIn("$replacedFiles = [System.Collections.Generic.List[object]]::new()", script)
+        self.assertIn("BackedUp = $false; Installed = $false", script)
+        self.assertIn("for ($index = $replacedFiles.Count - 1; $index -ge 0; $index--)", script)
+        self.assertIn("if ($state.Installed", script)
+        self.assertIn("if ($state.BackedUp", script)
+        self.assertIn("if ($backupCreated -and $recoverySucceeded)", script)
+        self.assertNotIn("Move-Item -LiteralPath $vendor", script)
+        self.assertNotIn("Move-Item -LiteralPath $staging -Destination $vendor", script)
+        self.assertNotRegex(script, r"Get-ChildItem[^\n]+\.viewer-assets")
+        self.assertNotRegex(script, r"Remove-Item[^\n]+\.viewer-assets-\*")
+        self.assertLess(script.index(".install-ready"), script.index("foreach ($asset in $assets) {\n        $relative = $asset.RelativePath"))
         entries = re.findall(
             r"RelativePath = '([^']+)'; Url = '[^']+'; Sha256 = '([0-9A-F]{64})'(?:; PublishedSha256 = '([0-9A-F]{64})')?",
             script,

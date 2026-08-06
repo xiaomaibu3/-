@@ -5,9 +5,12 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $vendor = Join-Path $root 'static/vendor'
-$staging = Join-Path $root ".viewer-assets-staging-$PID"
-$backup = Join-Path $root ".viewer-assets-backup-$PID"
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$operationId = [guid]::NewGuid().ToString('N')
+$staging = Join-Path $root ".viewer-assets-staging-$operationId"
+$backup = Join-Path $root ".viewer-assets-backup-$operationId"
+$stagingCreated = $false
+$backupCreated = $false
+$utf8StrictNoBom = [Text.UTF8Encoding]::new($false, $true)
 $assets = @(
     @{ RelativePath = 'pdfjs/pdf.mjs'; Url = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/build/pdf.mjs'; Sha256 = '487BDE1BCF89E041F791173D0509A1DC18D0FEB6655D78395E1611F9DA0DE17D'; Kind = 'JavaScript' }
     @{ RelativePath = 'pdfjs/pdf.worker.mjs'; Url = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/build/pdf.worker.mjs'; Sha256 = '1A7607F28CFBC63F0E4E0A41927C89F991E353E4F3FB4565ECFD621AC5975089'; Kind = 'JavaScript' }
@@ -19,9 +22,19 @@ $assets = @(
     @{ RelativePath = 'occt-import-js/occt-import-js.js'; Url = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/occt-import-js.js'; Sha256 = '3FB44CE11D00611F9B3F3C5775D520EBAB48930C1F08279B7B1316F05F0D3379'; Kind = 'JavaScript' }
     @{ RelativePath = 'occt-import-js/occt-import-js.wasm'; Url = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/occt-import-js.wasm'; Sha256 = '33391FC9D94EA5C869A6718488BF0A9A464222BAC9BDC764DFE1690CEF281952'; Kind = 'Wasm' }
 )
+$replacedFiles = [System.Collections.Generic.List[object]]::new()
+$recoverySucceeded = $false
+
+function Remove-OwnDirectory($path, $label) {
+    if (Test-Path -LiteralPath $path) {
+        try { Remove-Item -LiteralPath $path -Recurse -Force }
+        catch { Write-Warning "Could not clean $label '$path': $($_.Exception.Message)" }
+    }
+}
 
 try {
     New-Item -ItemType Directory -Force -Path $staging | Out-Null
+    $stagingCreated = $true
     foreach ($asset in $assets) {
         $destination = Join-Path $staging $asset.RelativePath
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
@@ -34,33 +47,55 @@ try {
         if ($asset.Kind -eq 'Wasm') {
             if ($bytes.Length -lt 4 -or $bytes[0] -ne 0 -or $bytes[1] -ne 97 -or $bytes[2] -ne 115 -or $bytes[3] -ne 109) { throw "Invalid WASM header: $($asset.RelativePath)" }
         } else {
-            $head = [Text.Encoding]::UTF8.GetString($bytes, 0, [Math]::Min($bytes.Length, 512))
-            if ($head -match '<!DOCTYPE html|<html|<body') { throw "HTML error page downloaded: $($asset.RelativePath)" }
-            if ($head -notmatch '^\s*(?:/\*|//|import\b|var\b|!function|\(function)') { throw "Invalid JavaScript header: $($asset.RelativePath)" }
-        }
-        if ($asset.RewriteImport) {
-            $source = [IO.File]::ReadAllText($destination, [Text.Encoding]::UTF8)
-            $source = $source.Replace("from 'three';", "from '../../../three.core.min.js';")
-            [IO.File]::WriteAllText($destination, $source, $utf8NoBom)
-            if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $asset.PublishedSha256) { throw "Published SHA-256 mismatch for $($asset.RelativePath)" }
-            if ($source -match 'from ["'']three["'']') { throw 'OrbitControls.js still has a bare three import' }
+            $source = $utf8StrictNoBom.GetString($bytes)
+            if ($source -match '<!DOCTYPE html|<html|<body') { throw "HTML error page downloaded: $($asset.RelativePath)" }
+            if ($source -notmatch '^\s*(?:/\*|//|import\b|var\b|!function|\(function)') { throw "Invalid JavaScript header: $($asset.RelativePath)" }
+            if ($asset.RewriteImport) {
+                $source = $source.Replace("from 'three';", "from '../../../three.core.min.js';")
+                [IO.File]::WriteAllText($destination, $source, $utf8StrictNoBom)
+                if ((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ne $asset.PublishedSha256) { throw "Published SHA-256 mismatch for $($asset.RelativePath)" }
+                if ($source -match 'from ["'']three["'']') { throw 'OrbitControls.js still has a bare three import' }
+            }
         }
     }
+    Set-Content -LiteralPath (Join-Path $staging '.install-ready') -Value $operationId -NoNewline -Encoding ascii
+    New-Item -ItemType Directory -Force -Path $backup | Out-Null
+    $backupCreated = $true
     foreach ($asset in $assets) {
-        if (-not (Test-Path -LiteralPath (Join-Path $staging $asset.RelativePath))) { throw "Missing staged asset: $($asset.RelativePath)" }
+        $relative = $asset.RelativePath
+        $target = Join-Path $vendor $relative
+        $backupTarget = Join-Path $backup $relative
+        $state = [pscustomobject]@{ RelativePath = $relative; Target = $target; Backup = $backupTarget; HadOriginal = (Test-Path -LiteralPath $target); BackedUp = $false; Installed = $false }
+        $replacedFiles.Add($state)
+        if ($state.HadOriginal) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $backupTarget) | Out-Null
+            Move-Item -LiteralPath $target -Destination $backupTarget
+            $state.BackedUp = $true
+        }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        Move-Item -LiteralPath (Join-Path $staging $relative) -Destination $target
+        $state.Installed = $true
+        Set-Content -LiteralPath (Join-Path $staging ".installed-$($relative.Replace('/', '-'))") -Value $operationId -NoNewline -Encoding ascii
     }
-    if (Test-Path -LiteralPath $vendor) { Move-Item -LiteralPath $vendor -Destination $backup }
-    Move-Item -LiteralPath $staging -Destination $vendor
-    if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
+    $recoverySucceeded = $true
 }
 catch {
-    if ((Test-Path -LiteralPath $backup) -and -not (Test-Path -LiteralPath $vendor)) {
-        Move-Item -LiteralPath $backup -Destination $vendor
+    $originalError = $_
+    $recoverySucceeded = $true
+    for ($index = $replacedFiles.Count - 1; $index -ge 0; $index--) {
+        $state = $replacedFiles[$index]
+        try {
+            if ($state.Installed -and (Test-Path -LiteralPath $state.Target)) { Remove-Item -LiteralPath $state.Target -Force }
+            if ($state.BackedUp -and (Test-Path -LiteralPath $state.Backup)) {
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $state.Target) | Out-Null
+                Move-Item -LiteralPath $state.Backup -Destination $state.Target
+            }
+        } catch { Write-Warning "Could not restore $($state.RelativePath): $($_.Exception.Message)"; $recoverySucceeded = $false }
     }
-    Write-Error $_
+    Write-Error -ErrorRecord $originalError -ErrorAction Continue
     exit 1
 }
 finally {
-    if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
-    if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
+    if ($stagingCreated) { Remove-OwnDirectory $staging 'staging directory' }
+    if ($backupCreated -and $recoverySucceeded) { Remove-OwnDirectory $backup 'backup directory' }
 }
