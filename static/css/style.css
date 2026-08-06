@@ -675,9 +675,11 @@ tr:last-child td {
 .file-viewer-toolbar h2 { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
 .file-viewer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .pdf-viewer-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pdf-page-number { width: 4.5rem; min-height: 36px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--card); color: var(--text); }
 .pdf-viewer-page { display: block; margin: 0 auto 16px; max-width: 100%; height: auto; background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.18); }
 .word-viewer .file-viewer-generation { background: #fff; color: #111; padding: 16px; overflow: auto; }
 .word-viewer .docx-wrapper { max-width: 100%; }
+.word-viewer iframe.docx-sandbox { display: block; width: 100%; min-height: 640px; border: 0; background: #fff; }
 .file-viewer-status { min-height: 28px; padding: 7px 16px; color: var(--text-muted); }
 .file-viewer-root { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .pdf-viewer, .word-viewer, .cad-viewer { min-height: 640px; height: 100%; overflow: auto; padding: 16px; }

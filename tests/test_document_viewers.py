@@ -144,6 +144,21 @@ class DocumentViewerContractTest(unittest.TestCase):
         self.assertRegex(source, r"canvas|getViewport|render\s*\(")
         self.assertRegex(source, r"devicePixelRatio|pixelRatio")
 
+    def test_pdf_renderer_owns_document_tasks_and_serializes_generation_draws(self):
+        source = runtime_source()
+        for contract in ("renderTasks", "pdf.destroy", "generation", "cancel", "drawQueue"):
+            self.assertIn(contract, source, f"missing PDF lifecycle contract: {contract}")
+        self.assertRegex(source, r"renderTask\.(?:cancel|cancel\s*\()")
+        self.assertRegex(source, r"await\s+.*draw|drawQueue|drawPromise")
+
+    def test_pdf_pagination_controls_support_prev_next_and_input_jump(self):
+        self.assertIn("pdf-page-prev", TEMPLATE)
+        self.assertIn("pdf-page-next", TEMPLATE)
+        self.assertRegex(TEMPLATE, r'id="pdf-page-number"[^>]*type="number"')
+        source = runtime_source()
+        for contract in ("currentPage", "getPage", "pdf-page-prev", "pdf-page-next"):
+            self.assertIn(contract, source, f"missing PDF pagination contract: {contract}")
+
     def test_docx_renderer_contract_fetches_securely_and_uses_local_dependencies(self):
         source = runtime_source()
         self.assertIn("/static/vendor/docx-preview/docx-preview.min.js", source)
@@ -155,6 +170,14 @@ class DocumentViewerContractTest(unittest.TestCase):
         self.assertRegex(source, r"in隔离容器|isolat|render.*container")
         self.assertRegex(source, r"禁用脚本|scripts\s*:\s*false|allowScripts\s*:\s*false|script")
         self.assertRegex(source, r"ready|error")
+
+    def test_docx_renderer_uses_scriptless_iframe_and_sanitizes_links_and_events(self):
+        source = runtime_source()
+        self.assertRegex(source, r"createElement\(['\"]iframe['\"]\)")
+        self.assertRegex(source, r"sandbox[^\n]*remove|setAttribute\(['\"]sandbox['\"]")
+        self.assertIn("srcdoc", source)
+        for contract in ("javascript:", "vbscript:", "data:", "file:", "on*"):
+            self.assertIn(contract, source, f"missing DOCX sanitization contract: {contract}")
 
     def test_dashboard_declares_viewer_dom_and_local_script(self):
         parser = DashboardParser()

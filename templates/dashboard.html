@@ -110,7 +110,10 @@
             <h2 id="file-viewer-title">文件预览</h2>
             <div class="file-viewer-actions">
                 <span class="pdf-viewer-controls" id="pdf-viewer-controls" hidden>
-                    <button class="btn btn-sm" id="pdf-page-number" type="button">第 1 页</button>
+                    <button class="btn btn-sm" id="pdf-page-prev" type="button" aria-label="上一页">上一页</button>
+                    <input class="pdf-page-number" id="pdf-page-number" type="number" min="1" value="1" aria-label="当前页码">
+                    <span id="pdf-page-count">/ 0</span>
+                    <button class="btn btn-sm" id="pdf-page-next" type="button" aria-label="下一页">下一页</button>
                     <button class="btn btn-sm" id="pdf-zoom-out" type="button" aria-label="缩小">−</button>
                     <button class="btn btn-sm" id="pdf-zoom-in" type="button" aria-label="放大">+</button>
                     <button class="btn btn-sm" id="pdf-rotate" type="button">旋转</button>
