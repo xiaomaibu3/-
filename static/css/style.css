@@ -677,8 +677,10 @@ tr:last-child td {
 .file-viewer-status { min-height: 28px; padding: 7px 16px; color: var(--text-muted); }
 .file-viewer-root { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .pdf-viewer, .word-viewer, .cad-viewer { min-height: 640px; height: 100%; overflow: auto; padding: 16px; }
-.cad-viewer { position: relative; touch-action: pan-x pan-y; }
-.cad-viewer canvas { display: block; width: 100%; height: 100%; min-height: 560px; aspect-ratio: 16 / 10; touch-action: none; }
+.pdf-viewer { max-width: 960px; margin: 0 auto; line-height: 1.55; }
+.word-viewer { max-width: 960px; margin: 0 auto; line-height: 1.6; }
+.cad-viewer { position: relative; overflow: hidden; touch-action: pan-x pan-y; }
+.cad-viewer canvas { display: block; width: 100%; height: 100%; min-height: 560px; max-width: 100%; aspect-ratio: 16 / 10; touch-action: none; }
 .file-viewer-download[hidden], .pdf-viewer[hidden], .word-viewer[hidden], .cad-viewer[hidden] { display: none; }
 
 /* ── 登录页 ───────────────────────────────────────────────── */
@@ -1095,7 +1097,9 @@ tr:last-child td {
     .file-viewer-toolbar h2 { white-space: normal; overflow-wrap: anywhere; }
     .file-viewer-actions { flex-shrink: 0; }
     .pdf-viewer, .word-viewer, .cad-viewer { min-height: 70vh; height: 70vh; overflow: auto; padding: 10px; }
-    .cad-viewer canvas { width: 100%; height: 100%; min-height: 0; aspect-ratio: 4 / 3; touch-action: none; }
+    .pdf-viewer, .word-viewer { max-width: 100%; line-height: 1.55; }
+    .cad-viewer { overflow: hidden; }
+    .cad-viewer canvas { width: 100%; height: 100%; min-height: 0; max-width: 100%; aspect-ratio: 4 / 3; touch-action: none; }
 
     table {
         min-width: 720px;

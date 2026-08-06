@@ -306,6 +306,71 @@ const files = Object.fromEntries(['pdf','docx','stp','step','doc','x_t','x_b'].m
             self.assertIsNotNone(index, f"missing route: {route}")
             self.assertEqual(lines[index + 1].strip(), "@login_required", f"unprotected route: {route}")
 
+    def test_viewer_lifecycle_supports_dynamic_async_renderers_and_cleanup(self):
+        node = node_executable()
+        self.assertIsNotNone(node, "Node runtime missing; set NODE_EXE or install node")
+        viewer_script = ROOT / "static/js" / "file-viewers.js"
+        harness = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const elements = new Map(), revoked = [], focusLog = [];
+function element(id) {
+  if (!elements.has(id)) elements.set(id, {
+    id, dataset: {}, style: {}, hidden: false, textContent: '', innerHTML: '', href: '', onclick: null,
+    listeners: {}, focus() { focusLog.push(this.id); },
+    addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
+    removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter(item => item !== fn); },
+    click() { if (this.onclick) this.onclick({preventDefault(){}}); },
+  });
+  return elements.get(id);
+}
+const document = { getElementById: element, querySelector: s => element(s.replace(/^#/, '')), createElement: tag => element(`${tag}-${elements.size}`) };
+const context = { console, module: {exports:{}}, exports:{}, document, window:{}, globalThis:null,
+  URL:{revokeObjectURL: url => revoked.push(url)}, location:{assign(){}}, setTimeout, clearTimeout };
+context.globalThis = context; context.window.location = context.location;
+vm.createContext(context); vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+const api = context.module.exports;
+assert.strictEqual(typeof api.registerFileViewerRenderer, 'function', 'renderer registry API missing');
+const file = {name:'sample.pdf', fileName:'sample.pdf', extension:'pdf', previewUrl:'/preview', downloadUrl:'/download'};
+let cleaned = false;
+api.registerFileViewerRenderer('pdf', async (target, current) => {
+  await Promise.resolve(); target.textContent = current.fileName;
+  return () => { cleaned = true; };
+});
+(async () => {
+  await api.openFileViewer(file);
+  assert.strictEqual(element('file-viewer-modal').dataset.state, 'ready');
+  api.resetFileViewer();
+  assert.ok(cleaned, 'renderer cleanup not called');
+  assert.strictEqual(element('file-viewer-download').href, '');
+  assert.strictEqual(element('file-viewer-download').onclick, null);
+  assert.strictEqual(element('file-viewer-status').textContent, '');
+  api.registerFileViewerRenderer('pdf', () => Promise.reject(new Error('boom')));
+  await api.openFileViewer(file);
+  assert.strictEqual(element('file-viewer-modal').dataset.state, 'error');
+  assert.match(element('file-viewer-status').textContent, /failed|error|澶辫触/i);
+  assert.strictEqual(element('file-viewer-download').href, '/download');
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+        result = subprocess.run([str(node), "-e", harness, str(viewer_script)], cwd=ROOT, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr or "viewer lifecycle failed")
+
+    def test_preview_routing_preserves_images_and_download_fallback(self):
+        self.assertRegex(TEMPLATE, r"function previewFile\(fid, fileName\)[\s\S]*?\['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'\]")
+        self.assertRegex(TEMPLATE, r"function previewDrawing\(did, filePath, drawingName\)[\s\S]*?\['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'\]")
+        self.assertRegex(TEMPLATE, r"\['pdf', 'docx', 'stp', 'step', 'doc', 'x_t', 'x_b'\]")
+        self.assertNotIn("window.open", TEMPLATE)
+
+    def test_viewer_dialog_focus_lifecycle_is_declared(self):
+        source = runtime_source()
+        self.assertIn("registerFileViewerRenderer", source)
+        self.assertRegex(source, r"document\.activeElement")
+        self.assertRegex(source, r"Tab")
+        self.assertRegex(source, r"file-viewer-modal.*focus|focus.*file-viewer-modal", re.I)
+        self.assertRegex(source, r"previousFocus|triggerElement|opener", re.I)
+        self.assertRegex(CSS, r"\.pdf-viewer[^}]*max-width\s*:")
+        self.assertRegex(CSS, r"\.word-viewer[^}]*line-height\s*:")
+        self.assertRegex(CSS, r"\.cad-viewer[^}]*overflow\s*:\s*hidden")
+
     def test_release_expectations(self):
         version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
         manifest = (ROOT / "android-xinggui" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
