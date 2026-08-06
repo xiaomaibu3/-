@@ -1,7 +1,7 @@
 (function (root) {
     'use strict';
 
-    const state = { file: null, viewerType: null, objectUrl: null, cleanup: [], previousFocus: null, modalListener: null, generation: 0 };
+    const state = { file: null, viewerType: null, target: null, objectUrl: null, cleanup: [], previousFocus: null, modalListener: null, generation: 0 };
     const supported = { pdf: 'pdf', docx: 'word', stp: 'cad', step: 'cad' };
     const unsupported = new Set(['doc', 'x_t', 'x_b']);
     const renderers = Object.create(null);
@@ -31,6 +31,7 @@
     function clearRenderer(type) {
         const target = element(`${type}-viewer`);
         if (!target) return;
+        if (target.innerHTML !== undefined) target.innerHTML = '';
         target.innerHTML = '';
         setVisible(target, false);
         if (target.removeAttribute) {
@@ -78,6 +79,8 @@
     }
     function resetFileViewer(restoreFocus = true) {
         state.generation += 1;
+        if (state.target && state.target.parentNode && state.target.parentNode.removeChild) state.target.parentNode.removeChild(state.target);
+        state.target = null;
         state.cleanup.splice(0).forEach(cleanup => { try { cleanup(); } catch (error) {} });
         if (state.modalListener) {
             const modal = element('file-viewer-modal');
@@ -105,7 +108,15 @@
         if (rendered.objectUrl && root.URL && root.URL.revokeObjectURL) root.URL.revokeObjectURL(rendered.objectUrl);
     }
     function isCurrentRequest(generation, file) {
-        return state.generation === generation && state.file === file;
+        return state.generation === generation && state.file === file && state.target && state.target.dataset.viewerGeneration === String(generation);
+    }
+    function createTarget(type, generation) {
+        const host = element(`${type}-viewer`);
+        const target = root.document && root.document.createElement ? root.document.createElement('div') : { dataset: {}, style: {}, hidden: false, innerHTML: '' };
+        target.className = 'file-viewer-generation';
+        target.dataset.viewerGeneration = String(generation);
+        if (host && host.appendChild) host.appendChild(target);
+        return target;
     }
     async function openFileViewer(file) {
         const modalWasOpen = Boolean(state.file);
@@ -130,12 +141,15 @@
         if (!state.viewerType) { showFallback('Unsupported file type. Download the source.'); return state; }
         setState('loading');
         const target = element(`${state.viewerType}-viewer`);
+        const renderTarget = createTarget(state.viewerType, requestGeneration);
+        state.target = renderTarget;
         if (target) setVisible(target, true);
         const hooks = currentHooks();
         try {
-            const renderer = renderers[state.viewerType] || (hooks && hooks.setViewerContent);
+            const registeredRenderer = renderers[state.viewerType];
+            const renderer = registeredRenderer || (hooks && hooks.setViewerContent);
             if (!renderer) { showFallback('Viewer not ready. Download the source.'); return state; }
-            const result = renderer(target, state.file);
+            const result = registeredRenderer ? renderer(renderTarget, state.file) : renderer(state.viewerType, state.file);
             const rendered = rendererResult(await Promise.resolve(result));
             if (!isCurrentRequest(requestGeneration, requestFile)) { disposeRendererResult(rendered); return state; }
             if (rendered.cleanup) state.cleanup.push(rendered.cleanup);

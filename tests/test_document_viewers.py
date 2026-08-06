@@ -457,6 +457,22 @@ for(const fn of listeners.keydown)fn({key:'Escape'});assert.strictEqual(element(
             self.assertRegex(body, r"\b(?:resetFileViewer|closeFileViewer)\s*\(")
             self.assertRegex(body, r"location\.assign\([^)]*download")
 
+    def test_renderer_direct_writes_are_isolated_per_generation(self):
+        node = node_executable()
+        self.assertIsNotNone(node, "Node runtime missing; set NODE_EXE or install node")
+        viewer_script = ROOT / "static/js" / "file-viewers.js"
+        harness = r"""
+const fs=require('fs'),vm=require('vm'),assert=require('assert'); const elements=new Map();
+function element(id){if(!elements.has(id))elements.set(id,{id,dataset:{},style:{},hidden:false,innerHTML:'',children:[],appendChild(n){this.children.push(n);n.parentNode=this;},removeChild(n){this.children=this.children.filter(x=>x!==n);n.parentNode=null;},focus(){document.activeElement=this;},addEventListener(){},removeEventListener(){},querySelectorAll(){return[];}});return elements.get(id);}
+const trigger=element('trigger'); const document={activeElement:trigger,getElementById:element,querySelector:s=>element(s.replace(/^#/,'')),createElement:tag=>({tagName:tag.toUpperCase(),dataset:{},style:{},innerHTML:'',parentNode:null})};
+const context={console,module:{exports:{}},exports:{},document,window:{},globalThis:null,URL:{revokeObjectURL(){}},location:{assign(){}},setTimeout,clearTimeout};context.globalThis=context;context.window.location=context.location;
+vm.createContext(context);vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),context);const api=context.module.exports;let a,b;
+api.registerFileViewerRenderer('pdf',(target,file)=>{if(file.name==='a.pdf')a=target;else b=target;return new Promise(resolve=>setTimeout(()=>{target.textContent=file.name;resolve();},file.name==='a.pdf'?20:1));});
+(async()=>{const openA=api.openFileViewer({name:'a.pdf',extension:'pdf'});const openB=api.openFileViewer({name:'b.pdf',extension:'pdf'});await Promise.all([openA,openB]);assert.strictEqual(element('pdf-viewer').children.length,1);assert.strictEqual(element('pdf-viewer').children[0].textContent,'b.pdf');api.closeFileViewer();a.textContent='late-a';assert.strictEqual(element('pdf-viewer').children.length,0);})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+        result=subprocess.run([str(node),"-e",harness,str(viewer_script)],cwd=ROOT,capture_output=True,text=True,timeout=30)
+        self.assertEqual(result.returncode,0,result.stderr or "renderer target isolation failed")
+
     def test_release_expectations(self):
         version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
         manifest = (ROOT / "android-xinggui" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
