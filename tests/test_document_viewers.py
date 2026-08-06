@@ -70,34 +70,104 @@ const vm = require('vm');
 const assert = require('assert');
 
 const fileName = process.argv[1];
-const calls = { pdf: [], docx: [], cad: [], download: [], message: [] };
-const spies = {
-  pdf: (...args) => calls.pdf.push(args),
-  docx: (...args) => calls.docx.push(args),
-  cad: (...args) => calls.cad.push(args),
-  download: (...args) => calls.download.push(args),
-  message: (...args) => calls.message.push(args),
-};
-const statusMessages = [];
-const status = {};
-for (const property of ['textContent', 'innerText', 'innerHTML']) {
-  Object.defineProperty(status, property, {
-    get: () => statusMessages.join(' '),
-    set: value => statusMessages.push(String(value)),
-  });
+class ClassList {
+  constructor(element) {
+    this.element = element;
+    this.values = new Set();
+  }
+  add(...names) { names.forEach(name => this.values.add(name)); }
+  remove(...names) { names.forEach(name => this.values.delete(name)); }
+  contains(name) { return this.values.has(name); }
+  toggle(name, force) {
+    const enabled = force === undefined ? !this.contains(name) : force;
+    enabled ? this.add(name) : this.remove(name);
+    return enabled;
+  }
 }
+
+class Element {
+  constructor(id, classes = []) {
+    this.id = id;
+    this.dataset = {};
+    this.style = {};
+    this.hidden = false;
+    this.attributes = {};
+    this.textContent = '';
+    this.innerText = '';
+    this.innerHTML = '';
+    this.href = '';
+    this.src = '';
+    this.value = '';
+    this.classList = new ClassList(this);
+    this.classList.add(...classes);
+  }
+  setAttribute(name, value) {
+    const stringValue = String(value);
+    this.attributes[name] = stringValue;
+    if (name === 'href') this.href = stringValue;
+    if (name === 'src') this.src = stringValue;
+    if (name.startsWith('data-')) {
+      const key = name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+      this.dataset[key] = stringValue;
+    }
+  }
+  getAttribute(name) {
+    if (name === 'href') return this.href || this.attributes[name] || null;
+    if (name === 'src') return this.src || this.attributes[name] || null;
+    return this.attributes[name] || null;
+  }
+  removeAttribute(name) {
+    delete this.attributes[name];
+    if (name === 'href') this.href = '';
+    if (name === 'src') this.src = '';
+  }
+  addEventListener() {}
+  removeEventListener() {}
+  replaceChildren() { this.innerHTML = ''; this.textContent = ''; }
+  appendChild(child) { elements.push(child); return child; }
+  querySelector(selector) { return document.querySelector(selector); }
+  querySelectorAll(selector) { return document.querySelectorAll(selector); }
+}
+
+const elements = [
+  new Element('file-viewer-modal', ['file-viewer-modal']),
+  new Element('file-viewer-title', ['file-viewer-title']),
+  new Element('file-viewer-status', ['file-viewer-status']),
+  new Element('file-viewer-download', ['file-viewer-download']),
+  new Element('pdf-viewer', ['pdf-viewer']),
+  new Element('word-viewer', ['word-viewer']),
+  new Element('cad-viewer', ['cad-viewer']),
+];
+const byId = Object.fromEntries(elements.map(element => [element.id, element]));
+const selectorMatches = (element, selector) => {
+  if (selector.startsWith('#')) return element.id === selector.slice(1);
+  if (selector.startsWith('.')) return element.classList.contains(selector.slice(1));
+  if (selector === '[data-viewer-type]') return element.dataset.viewerType !== undefined;
+  if (selector.includes('download')) {
+    return element.id.includes('download') || element.classList.contains('file-viewer-download');
+  }
+  return false;
+};
+const document = {
+  body: new Element('body'),
+  getElementById: id => byId[id] || null,
+  querySelector: selector => elements.find(element => selectorMatches(element, selector)) || null,
+  querySelectorAll: selector => elements.filter(element => selectorMatches(element, selector)),
+  createElement: tag => new Element(`${tag}-${elements.length}`),
+};
 const context = {
   console,
   module: { exports: {} },
   exports: {},
   window: {},
-  document: {
-    getElementById: () => status,
-    querySelector: () => status,
-  },
-  alert: spies.message,
+  document,
+  Element,
+  HTMLElement: Element,
+  URL,
+  setTimeout,
+  clearTimeout,
 };
-context.window.alert = spies.message;
+context.window.document = document;
 context.globalThis = context;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(fileName, 'utf8'), context, { filename: fileName });
@@ -113,40 +183,6 @@ assert.strictEqual(
   typeof openFileViewer,
   'function',
   'openFileViewer API is missing from static/js/file-viewers.js'
-);
-
-function installSpy(names, spyName) {
-  context.__viewerSpies = spies;
-  for (const name of names) {
-    vm.runInContext(
-      `try { ${name} = globalThis.__viewerSpies.${spyName}; } catch (_) {}`,
-      context
-    );
-    context[name] = spies[spyName];
-    context.window[name] = spies[spyName];
-    exported[name] = spies[spyName];
-  }
-}
-
-installSpy(
-  ['renderPdfViewer', 'renderPDFViewer', 'renderPdf', 'renderPDF', 'openPdfViewer'],
-  'pdf'
-);
-installSpy(
-  ['renderDocxViewer', 'renderDOCXViewer', 'renderDocx', 'renderDOCX', 'openDocxViewer'],
-  'docx'
-);
-installSpy(
-  [
-    'renderCadViewer', 'renderCADViewer', 'renderStepViewer',
-    'renderCad', 'renderCAD', 'renderStep', 'renderSTEP', 'openCadViewer',
-  ],
-  'cad'
-);
-installSpy(['downloadFileViewerSource'], 'download');
-installSpy(
-  ['showFileViewerMessage', 'showFileViewerStatus', 'setFileViewerStatus'],
-  'message'
 );
 
 const files = {
@@ -208,39 +244,76 @@ const files = {
   },
 };
 
-function resetCalls() {
-  for (const entries of Object.values(calls)) entries.length = 0;
-  statusMessages.length = 0;
+function resetDom() {
+  for (const element of elements) {
+    element.dataset = {};
+    element.style = {};
+    element.hidden = false;
+    element.attributes = {};
+    element.textContent = '';
+    element.innerText = '';
+    element.innerHTML = '';
+    element.href = '';
+    element.src = '';
+    element.classList.remove('active', 'visible', 'is-active', 'is-visible', 'hidden');
+  }
 }
 
-function assertReceivesFileOrUrl(args, file, label, urlKey) {
-  assert.ok(
-    args.some(value => value === file || value === file[urlKey]),
-    `${label} must receive the original file object or exact ${urlKey}`
+function isVisible(element) {
+  const panels = ['pdf-viewer', 'word-viewer', 'cad-viewer'].map(id => byId[id]);
+  const positiveClasses = ['active', 'visible', 'is-active', 'is-visible'];
+  const usesPositiveClass = panels.some(panel =>
+    positiveClasses.some(name => panel.classList.contains(name))
   );
+  if (usesPositiveClass) {
+    return positiveClasses.some(name => element.classList.contains(name));
+  }
+  return !element.hidden &&
+    element.style.display !== 'none' &&
+    element.style.visibility !== 'hidden' &&
+    !element.classList.contains('hidden');
+}
+
+function datasetValues() {
+  return elements.flatMap(element => Object.values(element.dataset)).map(String);
+}
+
+function domValues() {
+  return elements.flatMap(element => [
+    element.textContent,
+    element.innerText,
+    element.innerHTML,
+    element.href,
+    element.src,
+    ...Object.values(element.dataset),
+    ...Object.values(element.attributes),
+  ]).map(String);
 }
 
 (async () => {
   const supported = [
     ['pdf', 'pdf'],
-    ['docx', 'docx'],
+    ['docx', 'word'],
     ['stp', 'cad'],
     ['step', 'cad'],
   ];
-  for (const [extension, renderer] of supported) {
-    resetCalls();
+  for (const [extension, viewerType] of supported) {
+    resetDom();
     const file = files[extension];
     await Promise.resolve(openFileViewer(file));
-    assert.strictEqual(calls[renderer].length, 1, `${extension} must invoke its renderer`);
-    assertReceivesFileOrUrl(calls[renderer][0], file, extension, 'previewUrl');
-    for (const otherRenderer of ['pdf', 'docx', 'cad'].filter(name => name !== renderer)) {
+    const root = byId['file-viewer-modal'];
+    assert.strictEqual(root.dataset.viewerType, viewerType, `${extension} must expose its viewer type`);
+    for (const type of ['pdf', 'word', 'cad']) {
+      const panel = byId[`${type}-viewer`];
       assert.strictEqual(
-        calls[otherRenderer].length,
-        0,
-        `${extension} must not invoke the ${otherRenderer} renderer`
+        isVisible(panel),
+        type === viewerType,
+        `${extension} must ${type === viewerType ? 'show' : 'hide'} .${type}-viewer`
       );
     }
-    assert.strictEqual(calls.download.length, 0, `${extension} must not download`);
+    const values = datasetValues();
+    assert.ok(values.includes(file.fileName) || values.includes(file.name), `${extension} metadata must be exposed in the viewer DOM`);
+    assert.ok(values.includes(file.previewUrl), `${extension} previewUrl must be exposed in the viewer DOM`);
   }
 
   const fallbackPrompts = {
@@ -249,13 +322,19 @@ function assertReceivesFileOrUrl(args, file, label, urlKey) {
     x_b: /(?:XT|X_B)/i,
   };
   for (const extension of ['doc', 'x_t', 'x_b']) {
-    resetCalls();
+    resetDom();
     const file = files[extension];
     await Promise.resolve(openFileViewer(file));
-    assert.strictEqual(calls.download.length, 1, `${extension} must invoke download fallback`);
-    assertReceivesFileOrUrl(calls.download[0], file, extension, 'downloadUrl');
-    const message = calls.message.flat().join(' ') + ' ' + statusMessages.join(' ');
+    const message = domValues().join(' ');
     assert.match(message, fallbackPrompts[extension], `${extension} must show its fallback prompt`);
+    assert.match(message, /(?:不支持|暂不支持|unsupported)/i, `${extension} must be explicitly unsupported`);
+    const download = elements.find(element =>
+      element.href === file.downloadUrl ||
+      element.dataset.downloadUrl === file.downloadUrl ||
+      element.attributes.href === file.downloadUrl ||
+      new RegExp(`<(?:a|button)\\b[^>]*(?:href|data-download-url)=["']${file.downloadUrl}["']`, 'i').test(element.innerHTML)
+    );
+    assert.ok(download, `${extension} must expose a download control for its downloadUrl`);
   }
 })().catch(error => {
   console.error(`openFileViewer behavior test failed: ${error.stack || error}`);
