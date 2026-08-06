@@ -117,12 +117,13 @@ class XingguiMobileAppTest(unittest.TestCase):
         self.assertIn(".mobile-record-actions", css)
         self.assertIn(".table-wrapper table", css)
 
-    def test_mobile_table_actions_delegate_to_original_controls(self):
+    def test_mobile_table_actions_keep_real_click_handlers_on_phone_cards(self):
         pwa_js = (ROOT / "static" / "js" / "pwa.js").read_text(encoding="utf-8")
 
-        self.assertIn("data-mobile-source-index", pwa_js)
-        self.assertIn("source.click()", pwa_js)
-        self.assertIn("list.addEventListener('click'", pwa_js)
+        self.assertIn("cloneNode(true)", pwa_js)
+        self.assertIn("clone.setAttribute('type', 'button')", pwa_js)
+        self.assertNotIn("source.click()", pwa_js)
+        self.assertNotIn("event.target.closest", pwa_js)
 
     def test_page_navigation_uses_smooth_web_layer_transitions(self):
         css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
@@ -148,7 +149,7 @@ class XingguiMobileAppTest(unittest.TestCase):
     def test_service_worker_cache_version_updates_for_animation_assets(self):
         service_worker = (ROOT / "static" / "service-worker.js").read_text(encoding="utf-8")
 
-        self.assertIn("xinggui-pwa-v3", service_worker)
+        self.assertIn("xinggui-pwa-v4", service_worker)
 
     def test_android_wrapper_refreshes_web_assets_after_mobile_click_fixes(self):
         activity = (ROOT / "android-xinggui" / "app" / "src" / "main" / "java" / "com" / "xinggui" / "app" / "MainActivity.java").read_text(encoding="utf-8")
