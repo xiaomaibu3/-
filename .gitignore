@@ -19,6 +19,9 @@ android-xinggui/.android-sdk/
 android-xinggui/.jdk/
 android-xinggui/.downloads/
 
+!static/vendor/
+!static/vendor/**
+
 server.log
 server.err.log
 
