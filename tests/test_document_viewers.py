@@ -103,12 +103,25 @@ def media_blocks(source):
 
 
 def css_rule(block, selector):
-    pattern = rf"(?m)^\s*{re.escape(selector)}\s*(?:,|\{{)"
-    match = re.search(pattern, block)
-    if not match:
-        raise AssertionError(f"missing CSS rule: {selector}")
-    opening = block.find("{", match.start())
-    return matching_brace(block, opening)
+    cursor = 0
+    while True:
+        opening = block.find("{", cursor)
+        if opening < 0:
+            break
+        selectors = [item.strip() for item in block[cursor:opening].split(",")]
+        body = matching_brace(block, opening)
+        if selector in selectors:
+            return body
+        cursor = opening + len(body) + 2
+    raise AssertionError(f"missing CSS rule: {selector}")
+
+
+def has_css_rule(block, selector):
+    try:
+        css_rule(block, selector)
+    except AssertionError:
+        return False
+    return True
 
 
 def runtime_source():
@@ -184,7 +197,7 @@ const files = Object.fromEntries(['pdf','docx','stp','step','doc','x_t','x_b'].m
   }
   for (const ext of ['doc','x_t','x_b']) {
     await api(files[ext]);
-    assert.match(element('file-viewer-status').textContent, /unsupported|不支持|Word|XT/i, `${ext}: missing fallback`);
+    assert.match(element('file-viewer-status').textContent, /unsupported|not\s+supported|暂不支持|不支持/i, `${ext}: missing unsupported message`);
     const download = element('file-viewer-download'); download.click();
     assert.ok(download.href === files[ext].downloadUrl || navigations.includes(files[ext].downloadUrl) || downloads.some(args => args.includes(files[ext]) || args.includes(files[ext].downloadUrl)), `${ext}: wrong download target`);
   }
@@ -220,10 +233,10 @@ const files = Object.fromEntries(['pdf','docx','stp','step','doc','x_t','x_b'].m
         selectors = (".file-viewer-modal", ".file-viewer-toolbar", ".pdf-viewer", ".word-viewer", ".cad-viewer")
         rules = {}
         for selector in selectors:
-            match = next((block for block in blocks if re.search(rf"(?m)^\s*{re.escape(selector)}\s*(?:,|\{{)", block)), None)
+            match = next((block for block in blocks if has_css_rule(block, selector)), None)
             self.assertIsNotNone(match, f"missing mobile rule: {selector}")
             rules[selector] = css_rule(match, selector)
-        canvas_block = next((block for block in blocks if re.search(r"(?m)^\s*\.cad-viewer\s+canvas\s*\{", block)), None)
+        canvas_block = next((block for block in blocks if has_css_rule(block, ".cad-viewer canvas")), None)
         self.assertIsNotNone(canvas_block, "missing mobile canvas rule")
         canvas = css_rule(canvas_block, ".cad-viewer canvas")
         for selector in (".file-viewer-modal", ".pdf-viewer", ".word-viewer"):
