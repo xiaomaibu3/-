@@ -8,7 +8,9 @@ $assets = @(
     @{ RelativePath = 'static/vendor/pdfjs/pdf.mjs'; Url = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/build/pdf.mjs' }
     @{ RelativePath = 'static/vendor/pdfjs/pdf.worker.mjs'; Url = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/build/pdf.worker.mjs' }
     @{ RelativePath = 'static/vendor/docx-preview/docx-preview.min.js'; Url = 'https://cdn.jsdelivr.net/npm/docx-preview@0.4.0/dist/docx-preview.min.js' }
+    @{ RelativePath = 'static/vendor/jszip/jszip.min.js'; Url = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js' }
     @{ RelativePath = 'static/vendor/three/three.module.min.js'; Url = 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js' }
+    @{ RelativePath = 'static/vendor/three/three.core.min.js'; Url = 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.core.min.js' }
     @{ RelativePath = 'static/vendor/three/examples/jsm/controls/OrbitControls.js'; Url = 'https://cdn.jsdelivr.net/npm/three@0.185.1/examples/jsm/controls/OrbitControls.js' }
     @{ RelativePath = 'static/vendor/occt-import-js/occt-import-js.js'; Url = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/occt-import-js.js' }
     @{ RelativePath = 'static/vendor/occt-import-js/occt-import-js.wasm'; Url = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/occt-import-js.wasm' }
@@ -29,6 +31,26 @@ try {
         }
         Move-Item -Force -LiteralPath $temporary -Destination $destination
         Write-Host "$($asset.RelativePath) $((Get-Item -LiteralPath $destination).Length) bytes"
+    }
+
+    $orbitControls = Join-Path $root 'static/vendor/three/examples/jsm/controls/OrbitControls.js'
+    $orbitSource = Get-Content -LiteralPath $orbitControls -Raw
+    $orbitSource = $orbitSource -replace "from 'three';", "from '../../../three.core.min.js';"
+    if ($orbitSource -match 'from ["'']three["'']') {
+        throw 'OrbitControls.js still has a bare three import'
+    }
+    Set-Content -LiteralPath $orbitControls -Value $orbitSource -NoNewline
+
+    $dependencies = @(
+        'static/vendor/three/three.core.min.js'
+        'static/vendor/three/examples/jsm/controls/OrbitControls.js'
+        'static/vendor/jszip/jszip.min.js'
+    )
+    foreach ($dependency in $dependencies) {
+        $dependencyPath = Join-Path $root $dependency
+        if (-not (Test-Path -LiteralPath $dependencyPath) -or (Get-Item -LiteralPath $dependencyPath).Length -le 0) {
+            throw "Missing local dependency: $dependency"
+        }
     }
 }
 catch {

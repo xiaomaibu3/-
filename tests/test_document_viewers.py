@@ -210,7 +210,8 @@ const files = Object.fromEntries(['pdf','docx','stp','step','doc','x_t','x_b'].m
         source = runtime_source()
         paths = (
             "static/vendor/pdfjs/pdf.mjs", "static/vendor/pdfjs/pdf.worker.mjs",
-            "static/vendor/docx-preview/docx-preview.min.js", "static/vendor/three/three.module.min.js",
+            "static/vendor/docx-preview/docx-preview.min.js", "static/vendor/jszip/jszip.min.js",
+            "static/vendor/three/three.module.min.js", "static/vendor/three/three.core.min.js",
             "static/vendor/three/examples/jsm/controls/OrbitControls.js",
             "static/vendor/occt-import-js/occt-import-js.js", "static/vendor/occt-import-js/occt-import-js.wasm",
         )
@@ -219,6 +220,9 @@ const files = Object.fromEntries(['pdf','docx','stp','step','doc','x_t','x_b'].m
             self.assertTrue(asset.is_file(), f"missing asset: {relative_path}")
             self.assertGreater(asset.stat().st_size, 0, f"empty asset: {relative_path}")
             self.assertIn("/" + relative_path.replace("\\", "/"), source, f"asset not referenced: {relative_path}")
+        orbit_controls = (ROOT / "static/vendor/three/examples/jsm/controls/OrbitControls.js").read_text(encoding="utf-8")
+        self.assertIn("from '../../../three.core.min.js'", orbit_controls)
+        self.assertNotRegex(orbit_controls, r"from\s+['\"]three['\"]")
         string_values = re.findall(r"[\"'`]([^\"'`]+)[\"'`]", source)
         self.assertFalse(
             any(re.match(r"(?:https?:)?//", value) for value in string_values),
@@ -226,6 +230,22 @@ const files = Object.fromEntries(['pdf','docx','stp','step','doc','x_t','x_b'].m
         )
         for reference in (value for value in string_values if value.startswith("/static/")):
             self.assertTrue(reference.startswith("/static/vendor/"), f"non-vendor viewer path: {reference}")
+
+    def test_bundled_viewer_assets_are_nonempty_and_closed(self):
+        paths = (
+            "static/vendor/pdfjs/pdf.mjs", "static/vendor/pdfjs/pdf.worker.mjs",
+            "static/vendor/docx-preview/docx-preview.min.js", "static/vendor/jszip/jszip.min.js",
+            "static/vendor/three/three.module.min.js", "static/vendor/three/three.core.min.js",
+            "static/vendor/three/examples/jsm/controls/OrbitControls.js",
+            "static/vendor/occt-import-js/occt-import-js.js", "static/vendor/occt-import-js/occt-import-js.wasm",
+        )
+        for relative_path in paths:
+            asset = ROOT / relative_path
+            self.assertTrue(asset.is_file(), f"missing asset: {relative_path}")
+            self.assertGreater(asset.stat().st_size, 0, f"empty asset: {relative_path}")
+        orbit_controls = (ROOT / "static/vendor/three/examples/jsm/controls/OrbitControls.js").read_text(encoding="utf-8")
+        self.assertIn("from '../../../three.core.min.js'", orbit_controls)
+        self.assertNotRegex(orbit_controls, r"from\s+['\"]three['\"]")
 
     def test_viewer_mobile_rules_are_scoped(self):
         blocks = [body for _, body in media_blocks(CSS)]
