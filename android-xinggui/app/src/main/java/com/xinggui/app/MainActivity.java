@@ -4,11 +4,13 @@ import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.KeyguardManager;
+import android.content.ClipData;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.hardware.biometrics.BiometricPrompt;
+import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
@@ -19,6 +21,8 @@ import android.util.Base64;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.CookieManager;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -43,11 +47,14 @@ public class MainActivity extends Activity {
     private static final String PREF_CIPHER = "cipher";
     private static final String PREF_IV = "iv";
     private static final int REQUEST_DEVICE_CREDENTIAL = 6001;
+    private static final int REQUEST_FILE_CHOOSER = 7001;
 
     private WebView webView;
     private Runnable pendingAuthenticatedAction;
+    private ValueCallback<Uri[]> filePathCallback;
     private boolean shouldRequireLoginOnResume = false;
     private boolean isAuthenticating = false;
+    private boolean isChoosingFile = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,6 +81,44 @@ public class MainActivity extends Activity {
 
         webView.clearCache(true);
         webView.addJavascriptInterface(new NativeBridge(), "XingguiNative");
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(
+                    WebView view,
+                    ValueCallback<Uri[]> callback,
+                    WebChromeClient.FileChooserParams params) {
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                }
+
+                filePathCallback = callback;
+                isChoosingFile = true;
+
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                intent.putExtra(
+                    Intent.EXTRA_ALLOW_MULTIPLE,
+                    params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+                );
+
+                try {
+                    startActivityForResult(
+                        Intent.createChooser(intent, "选择文件"),
+                        REQUEST_FILE_CHOOSER
+                    );
+                } catch (Exception ex) {
+                    isChoosingFile = false;
+                    filePathCallback = null;
+                    callback.onReceiveValue(null);
+                    showNativeMessage("无法打开文件选择器");
+                    return false;
+                }
+
+                return true;
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
@@ -96,7 +141,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (!isChangingConfigurations() && !isAuthenticating) {
+        if (!isChangingConfigurations() && !isAuthenticating && !isChoosingFile) {
             shouldRequireLoginOnResume = true;
         }
     }
@@ -113,6 +158,35 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_FILE_CHOOSER) {
+            ValueCallback<Uri[]> callback = filePathCallback;
+            filePathCallback = null;
+            isChoosingFile = false;
+
+            if (callback == null) {
+                return;
+            }
+
+            if (resultCode != RESULT_OK || data == null) {
+                callback.onReceiveValue(null);
+                return;
+            }
+
+            ClipData clipData = data.getClipData();
+            if (clipData != null) {
+                Uri[] results = new Uri[clipData.getItemCount()];
+                for (int i = 0; i < clipData.getItemCount(); i++) {
+                    results[i] = clipData.getItemAt(i).getUri();
+                }
+                callback.onReceiveValue(results);
+                return;
+            }
+
+            Uri uri = data.getData();
+            callback.onReceiveValue(uri == null ? null : new Uri[] { uri });
+            return;
+        }
+
         if (requestCode == REQUEST_DEVICE_CREDENTIAL) {
             Runnable action = pendingAuthenticatedAction;
             pendingAuthenticatedAction = null;

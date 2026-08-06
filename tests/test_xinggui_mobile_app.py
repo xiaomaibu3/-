@@ -64,13 +64,13 @@ class XingguiMobileAppTest(unittest.TestCase):
         web_manifest = json.loads((ROOT / "static" / "manifest.webmanifest").read_text(encoding="utf-8"))
         service_worker = (ROOT / "static" / "service-worker.js").read_text(encoding="utf-8")
 
-        self.assertEqual(APP_VERSION, "1.0.1")
+        self.assertEqual(APP_VERSION, "1.0.2")
         self.assertIn("APP_VERSION", app_py)
         self.assertIn("'app_version': APP_VERSION", app_py)
         self.assertIn("系统版本", dashboard)
         self.assertIn("${cfg.app_version || '未知'}", dashboard)
         self.assertIn(f'android:versionName="{APP_VERSION}"', manifest)
-        self.assertIn('android:versionCode="2"', manifest)
+        self.assertIn('android:versionCode="3"', manifest)
         self.assertEqual(web_manifest["version"], APP_VERSION)
         self.assertIn(f"xinggui-pwa-{APP_VERSION}", service_worker)
 
@@ -80,6 +80,16 @@ class XingguiMobileAppTest(unittest.TestCase):
         self.assertIn("..\\VERSION", build_script)
         self.assertIn("versionName", build_script)
         self.assertIn("does not match VERSION", build_script)
+
+    def test_android_wrapper_opens_native_file_picker_for_web_inputs(self):
+        activity = (ROOT / "android-xinggui" / "app" / "src" / "main" / "java" / "com" / "xinggui" / "app" / "MainActivity.java").read_text(encoding="utf-8")
+
+        self.assertIn("WebChromeClient", activity)
+        self.assertIn("onShowFileChooser", activity)
+        self.assertIn("ACTION_OPEN_DOCUMENT", activity)
+        self.assertIn("EXTRA_ALLOW_MULTIPLE", activity)
+        self.assertIn("REQUEST_FILE_CHOOSER", activity)
+        self.assertIn("isChoosingFile", activity)
 
     def test_android_wrapper_uses_system_auth_for_local_credential_login(self):
         manifest = (ROOT / "android-xinggui" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
