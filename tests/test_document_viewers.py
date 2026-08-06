@@ -57,6 +57,13 @@ class DocumentViewerContractTest(unittest.TestCase):
         for marker in ("openFileViewer", "pdf-viewer", "word-viewer", "cad-viewer"):
             self.assertIn(marker, TEMPLATE)
 
+    def test_dashboard_loads_local_file_viewer_script(self):
+        self.assertRegex(
+            TEMPLATE,
+            r'<script\b[^>]*\bsrc=["\']/static/js/file-viewers\.js(?:[?#][^"\']*)?["\'][^>]*>',
+            "dashboard.html must load the local file-viewers.js script",
+        )
+
     def test_open_file_viewer_routes_extensions_by_behavior(self):
         self.assertTrue(NODE.is_file(), f"Node runtime not found: {NODE}")
         viewer_script = ROOT / "static" / "js" / "file-viewers.js"
@@ -440,6 +447,10 @@ function downloadCallTargetsFile(args, file) {
 
     def test_local_viewer_assets_exist_and_runtime_references_are_local(self):
         source = runtime_source()
+        viewer_script = ROOT / "static" / "js" / "file-viewers.js"
+        viewer_source = without_comments(
+            viewer_script.read_text(encoding="utf-8") if viewer_script.exists() else ""
+        )
         paths = (
             "static/vendor/pdfjs/pdf.mjs",
             "static/vendor/pdfjs/pdf.worker.mjs",
@@ -454,7 +465,14 @@ function downloadCallTargetsFile(args, file) {
             self.assertTrue(asset.is_file(), f"missing local viewer asset: {relative_path}")
             self.assertGreater(asset.stat().st_size, 0, f"empty local viewer asset: {relative_path}")
             self.assertIn("/" + relative_path.replace("\\", "/"), source)
+        static_references = re.findall(r'["\'](?P<path>/static/[^"\']+)["\']', viewer_source)
+        for reference in static_references:
+            self.assertTrue(
+                reference.startswith("/static/vendor/"),
+                f"viewer runtime dependency is outside /static/vendor/: {reference}",
+            )
         self.assertNotRegex(source, r"https?://", re.IGNORECASE)
+        self.assertNotRegex(source, r"//", "viewer runtime must not use protocol-relative external URLs")
 
     def test_viewer_rules_are_inside_max_width_media_blocks(self):
         blocks = [body for header, body in media_blocks(CSS)]
