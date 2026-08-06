@@ -57,63 +57,210 @@ class DocumentViewerContractTest(unittest.TestCase):
         for marker in ("openFileViewer", "pdf-viewer", "word-viewer", "cad-viewer"):
             self.assertIn(marker, TEMPLATE)
 
-    def test_file_viewer_dispatcher_routes_extensions_by_behavior(self):
+    def test_open_file_viewer_routes_extensions_by_behavior(self):
         self.assertTrue(NODE.is_file(), f"Node runtime not found: {NODE}")
         viewer_script = ROOT / "static" / "js" / "file-viewers.js"
+        self.assertTrue(
+            viewer_script.is_file(),
+            "openFileViewer API is missing from static/js/file-viewers.js",
+        )
         harness = r"""
 const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
 
 const fileName = process.argv[1];
-const calls = [];
-const openSpy = (...args) => calls.push({ type: 'open', args });
-const downloadSpy = (...args) => calls.push({ type: 'download', args });
+const calls = { pdf: [], docx: [], cad: [], download: [], message: [] };
+const spies = {
+  pdf: (...args) => calls.pdf.push(args),
+  docx: (...args) => calls.docx.push(args),
+  cad: (...args) => calls.cad.push(args),
+  download: (...args) => calls.download.push(args),
+  message: (...args) => calls.message.push(args),
+};
+const statusMessages = [];
+const status = {};
+for (const property of ['textContent', 'innerText', 'innerHTML']) {
+  Object.defineProperty(status, property, {
+    get: () => statusMessages.join(' '),
+    set: value => statusMessages.push(String(value)),
+  });
+}
 const context = {
   console,
   module: { exports: {} },
   exports: {},
   window: {},
-  document: {},
-  openFileViewer: openSpy,
-  downloadFileViewerSource: downloadSpy,
+  document: {
+    getElementById: () => status,
+    querySelector: () => status,
+  },
+  alert: spies.message,
 };
-context.window.openFileViewer = openSpy;
-context.window.downloadFileViewerSource = downloadSpy;
+context.window.alert = spies.message;
 context.globalThis = context;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(fileName, 'utf8'), context, { filename: fileName });
+vm.runInContext(
+  "globalThis.__openFileViewer = typeof openFileViewer === 'function' ? openFileViewer : undefined",
+  context
+);
 
 const exported = context.module.exports;
-const dispatcher =
-  exported.fileViewerDispatcher ||
-  exported.dispatchFileViewer ||
-  context.fileViewerDispatcher ||
-  context.dispatchFileViewer ||
-  context.window.fileViewerDispatcher ||
-  context.window.dispatchFileViewer;
-assert.strictEqual(typeof dispatcher, 'function', 'file viewer dispatcher API is not exported');
+const openFileViewer =
+  exported.openFileViewer || context.__openFileViewer || context.window.openFileViewer;
+assert.strictEqual(
+  typeof openFileViewer,
+  'function',
+  'openFileViewer API is missing from static/js/file-viewers.js'
+);
 
-function invoke(extension) {
-  calls.length = 0;
-  const file = { extension, name: `contract.${extension}` };
-  dispatcher(extension, file, {
-    openFileViewer: openSpy,
-    downloadFileViewerSource: downloadSpy,
-  });
+function installSpy(names, spyName) {
+  context.__viewerSpies = spies;
+  for (const name of names) {
+    vm.runInContext(
+      `try { ${name} = globalThis.__viewerSpies.${spyName}; } catch (_) {}`,
+      context
+    );
+    context[name] = spies[spyName];
+    context.window[name] = spies[spyName];
+    exported[name] = spies[spyName];
+  }
 }
 
-for (const extension of ['pdf', 'docx', 'stp', 'step']) {
-  invoke(extension);
-  assert.strictEqual(calls.filter(call => call.type === 'open').length, 1, `${extension} must call openFileViewer once`);
-  assert.strictEqual(calls.filter(call => call.type === 'download').length, 0, `${extension} must not download`);
+installSpy(
+  ['renderPdfViewer', 'renderPDFViewer', 'renderPdf', 'renderPDF', 'openPdfViewer'],
+  'pdf'
+);
+installSpy(
+  ['renderDocxViewer', 'renderDOCXViewer', 'renderDocx', 'renderDOCX', 'openDocxViewer'],
+  'docx'
+);
+installSpy(
+  [
+    'renderCadViewer', 'renderCADViewer', 'renderStepViewer',
+    'renderCad', 'renderCAD', 'renderStep', 'renderSTEP', 'openCadViewer',
+  ],
+  'cad'
+);
+installSpy(['downloadFileViewerSource'], 'download');
+installSpy(
+  ['showFileViewerMessage', 'showFileViewerStatus', 'setFileViewerStatus'],
+  'message'
+);
+
+const files = {
+  pdf: {
+    id: 101,
+    name: 'contract-pdf.pdf',
+    fileName: 'contract-pdf.pdf',
+    extension: 'pdf',
+    previewUrl: '/api/files/101/preview',
+    downloadUrl: '/api/files/101/download',
+  },
+  docx: {
+    id: 102,
+    name: 'contract-docx.docx',
+    fileName: 'contract-docx.docx',
+    extension: 'docx',
+    previewUrl: '/api/files/102/preview',
+    downloadUrl: '/api/files/102/download',
+  },
+  stp: {
+    drawingId: 103,
+    name: 'contract-stp.stp',
+    fileName: 'contract-stp.stp',
+    extension: 'stp',
+    previewUrl: '/api/drawings/103/preview',
+    downloadUrl: '/api/drawings/103/download',
+  },
+  step: {
+    drawingId: 104,
+    name: 'contract-step.step',
+    fileName: 'contract-step.step',
+    extension: 'step',
+    previewUrl: '/api/drawings/104/preview',
+    downloadUrl: '/api/drawings/104/download',
+  },
+  doc: {
+    id: 105,
+    name: 'contract-doc.doc',
+    fileName: 'contract-doc.doc',
+    extension: 'doc',
+    previewUrl: '/api/files/105/preview',
+    downloadUrl: '/api/files/105/download',
+  },
+  x_t: {
+    drawingId: 106,
+    name: 'contract-x-t.x_t',
+    fileName: 'contract-x-t.x_t',
+    extension: 'x_t',
+    previewUrl: '/api/drawings/106/preview',
+    downloadUrl: '/api/drawings/106/download',
+  },
+  x_b: {
+    drawingId: 107,
+    name: 'contract-x-b.x_b',
+    fileName: 'contract-x-b.x_b',
+    extension: 'x_b',
+    previewUrl: '/api/drawings/107/preview',
+    downloadUrl: '/api/drawings/107/download',
+  },
+};
+
+function resetCalls() {
+  for (const entries of Object.values(calls)) entries.length = 0;
+  statusMessages.length = 0;
 }
 
-for (const extension of ['doc', 'x_t', 'x_b']) {
-  invoke(extension);
-  assert.strictEqual(calls.filter(call => call.type === 'open').length, 0, `${extension} must not call openFileViewer`);
-  assert.strictEqual(calls.filter(call => call.type === 'download').length, 1, `${extension} must call downloadFileViewerSource once`);
+function assertReceivesFileOrUrl(args, file, label, urlKey) {
+  assert.ok(
+    args.some(value => value === file || value === file[urlKey]),
+    `${label} must receive the original file object or exact ${urlKey}`
+  );
 }
+
+(async () => {
+  const supported = [
+    ['pdf', 'pdf'],
+    ['docx', 'docx'],
+    ['stp', 'cad'],
+    ['step', 'cad'],
+  ];
+  for (const [extension, renderer] of supported) {
+    resetCalls();
+    const file = files[extension];
+    await Promise.resolve(openFileViewer(file));
+    assert.strictEqual(calls[renderer].length, 1, `${extension} must invoke its renderer`);
+    assertReceivesFileOrUrl(calls[renderer][0], file, extension, 'previewUrl');
+    for (const otherRenderer of ['pdf', 'docx', 'cad'].filter(name => name !== renderer)) {
+      assert.strictEqual(
+        calls[otherRenderer].length,
+        0,
+        `${extension} must not invoke the ${otherRenderer} renderer`
+      );
+    }
+    assert.strictEqual(calls.download.length, 0, `${extension} must not download`);
+  }
+
+  const fallbackPrompts = {
+    doc: /(?:旧版|Word|DOC)/i,
+    x_t: /(?:XT|X_T)/i,
+    x_b: /(?:XT|X_B)/i,
+  };
+  for (const extension of ['doc', 'x_t', 'x_b']) {
+    resetCalls();
+    const file = files[extension];
+    await Promise.resolve(openFileViewer(file));
+    assert.strictEqual(calls.download.length, 1, `${extension} must invoke download fallback`);
+    assertReceivesFileOrUrl(calls.download[0], file, extension, 'downloadUrl');
+    const message = calls.message.flat().join(' ') + ' ' + statusMessages.join(' ');
+    assert.match(message, fallbackPrompts[extension], `${extension} must show its fallback prompt`);
+  }
+})().catch(error => {
+  console.error(`openFileViewer behavior test failed: ${error.stack || error}`);
+  process.exitCode = 1;
+});
 """
         result = subprocess.run(
             [str(NODE), "-e", harness, str(viewer_script)],
@@ -123,7 +270,11 @@ for (const extension of ['doc', 'x_t', 'x_b']) {
             encoding="utf-8",
             timeout=30,
         )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertEqual(
+            result.returncode,
+            0,
+            "openFileViewer behavior test failed:\n" + (result.stderr or result.stdout),
+        )
 
     def test_local_viewer_assets_exist_and_runtime_references_are_local(self):
         source = runtime_source()
