@@ -14,6 +14,29 @@
     return (node && node.textContent ? node.textContent : '').replace(/\s+/g, ' ').trim();
   }
 
+  function stripInlineHandlers(node) {
+    if (!node || !node.attributes) {
+      return;
+    }
+    Array.prototype.slice.call(node.attributes).forEach(function (attr) {
+      if (/^on/i.test(attr.name)) {
+        node.removeAttribute(attr.name);
+      }
+    });
+    Array.prototype.slice.call(node.children || []).forEach(stripInlineHandlers);
+  }
+
+  function cloneActionControl(source, sourceIndex) {
+    var clone = source.cloneNode(true);
+    stripInlineHandlers(clone);
+    clone.setAttribute('data-mobile-source-index', sourceIndex);
+    if (clone.tagName && clone.tagName.toLowerCase() === 'a') {
+      clone.setAttribute('href', '#');
+      clone.removeAttribute('target');
+    }
+    return clone;
+  }
+
   function enhanceMobileTables() {
     var wrappers = document.querySelectorAll('.table-wrapper');
     var isPhone = window.innerWidth <= 768;
@@ -51,6 +74,20 @@
 
       var list = document.createElement('div');
       list.className = 'mobile-card-list';
+      var actionSources = [];
+
+      list.addEventListener('click', function (event) {
+        var proxy = event.target.closest('[data-mobile-source-index]');
+        if (!proxy) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        var source = actionSources[Number(proxy.getAttribute('data-mobile-source-index'))];
+        if (source && typeof source.click === 'function') {
+          source.click();
+        }
+      });
 
       rows.forEach(function (row) {
         var cells = Array.prototype.slice.call(row.children);
@@ -77,8 +114,9 @@
         cells.forEach(function (cell, index) {
           var hasAction = cell.querySelector('button, a.btn, [onclick]');
           if (hasAction) {
-            Array.prototype.slice.call(cell.children).forEach(function (child) {
-              actions.appendChild(child.cloneNode(true));
+            Array.prototype.slice.call(cell.querySelectorAll('button, a.btn, [onclick]')).forEach(function (source) {
+              var sourceIndex = actionSources.push(source) - 1;
+              actions.appendChild(cloneActionControl(source, sourceIndex));
             });
             return;
           }
