@@ -49,6 +49,88 @@ def get_db(db_path):
         raise
 
 
+def _fetch_ids(conn, query, params=()):
+    return [row[0] for row in conn.execute(query, params).fetchall()]
+
+
+def _delete_approval_records(conn, target_type, target_ids):
+    if not target_ids:
+        return
+    placeholders = ','.join('?' for _ in target_ids)
+    conn.execute(
+        f"DELETE FROM approval_records WHERE target_type=? AND target_id IN ({placeholders})",
+        [target_type, *target_ids]
+    )
+
+
+def delete_project_tree(conn, project_id):
+    project = conn.execute("SELECT id FROM projects WHERE id=?", (project_id,)).fetchone()
+    if not project:
+        return False
+
+    requirement_ids = _fetch_ids(conn, "SELECT id FROM requirements WHERE project_id=?", (project_id,))
+    drawing_ids = _fetch_ids(conn, "SELECT id FROM drawings WHERE project_id=?", (project_id,))
+    bom_ids = _fetch_ids(conn, "SELECT id FROM boms WHERE project_id=?", (project_id,))
+
+    req_change_ids = []
+    if requirement_ids:
+        placeholders = ','.join('?' for _ in requirement_ids)
+        req_change_ids = _fetch_ids(
+            conn,
+            f"SELECT id FROM req_changes WHERE req_id IN ({placeholders})",
+            requirement_ids
+        )
+
+    drawing_eco_ids = []
+    if drawing_ids:
+        placeholders = ','.join('?' for _ in drawing_ids)
+        drawing_eco_ids = _fetch_ids(
+            conn,
+            f"SELECT id FROM drawing_ecos WHERE drawing_id IN ({placeholders})",
+            drawing_ids
+        )
+
+    for target_type, ids in (
+        ('project', [project_id]),
+        ('requirement', requirement_ids),
+        ('req_change', req_change_ids),
+        ('drawing', drawing_ids),
+        ('drawing_eco', drawing_eco_ids),
+        ('bom', bom_ids),
+    ):
+        _delete_approval_records(conn, target_type, ids)
+
+    if requirement_ids:
+        placeholders = ','.join('?' for _ in requirement_ids)
+        conn.execute(f"DELETE FROM req_changes WHERE req_id IN ({placeholders})", requirement_ids)
+        conn.execute(f"UPDATE requirements SET parent_req_id=NULL WHERE parent_req_id IN ({placeholders})", requirement_ids)
+        conn.execute(f"UPDATE bom_items SET req_id=NULL WHERE req_id IN ({placeholders})", requirement_ids)
+
+    if drawing_ids:
+        placeholders = ','.join('?' for _ in drawing_ids)
+        conn.execute(f"DELETE FROM drawing_ecos WHERE drawing_id IN ({placeholders})", drawing_ids)
+        conn.execute(f"UPDATE bom_items SET drawing_id=NULL WHERE drawing_id IN ({placeholders})", drawing_ids)
+
+    if bom_ids:
+        placeholders = ','.join('?' for _ in bom_ids)
+        conn.execute(f"UPDATE bom_items SET parent_item_id=NULL WHERE bom_id IN ({placeholders})", bom_ids)
+        conn.execute(f"DELETE FROM bom_items WHERE bom_id IN ({placeholders})", bom_ids)
+        conn.execute(f"DELETE FROM boms WHERE id IN ({placeholders})", bom_ids)
+
+    conn.execute("DELETE FROM project_files WHERE project_id=?", (project_id,))
+
+    if drawing_ids:
+        placeholders = ','.join('?' for _ in drawing_ids)
+        conn.execute(f"DELETE FROM drawings WHERE id IN ({placeholders})", drawing_ids)
+
+    if requirement_ids:
+        placeholders = ','.join('?' for _ in requirement_ids)
+        conn.execute(f"DELETE FROM requirements WHERE id IN ({placeholders})", requirement_ids)
+
+    conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
+    return True
+
+
 SCHEMA = """
 -- 用户表
 CREATE TABLE IF NOT EXISTS users (

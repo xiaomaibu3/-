@@ -18,7 +18,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
 from config import Config
-from database import init_db, get_db, close_connection
+from database import init_db, get_db, close_connection, delete_project_tree
 from utils.number_generator import generate_project_number, generate_req_id, generate_material_code
 from utils.file_utils import (
     ensure_dir, get_project_file_dir, save_uploaded_file,
@@ -260,9 +260,35 @@ def api_projects_update(pid):
 @login_required
 @role_required('系统管理员', '项目管理员')
 def api_projects_delete(pid):
+    attachment_paths = []
     with get_db(config.db_path) as conn:
-        conn.execute("DELETE FROM projects WHERE id=?", (pid,))
+        project = conn.execute("SELECT id FROM projects WHERE id=?", (pid,)).fetchone()
+        if not project:
+            return jsonify({'error': '项目不存在'}), 404
+
+        attachment_paths = [
+            row['file_path'] for row in conn.execute(
+                "SELECT file_path FROM project_files WHERE project_id=? AND file_path<>''",
+                (pid,)
+            ).fetchall()
+        ]
+        attachment_paths.extend(
+            row['file_path'] for row in conn.execute(
+                "SELECT file_path FROM drawings WHERE project_id=? AND file_path<>''",
+                (pid,)
+            ).fetchall()
+        )
+
+        delete_project_tree(conn, pid)
         log_action('删除项目', 'project', pid)
+
+    for rel_path in attachment_paths:
+        full_path = os.path.join(config.upload_root, rel_path)
+        if os.path.exists(full_path):
+            try:
+                os.remove(full_path)
+            except OSError:
+                pass
     return jsonify({'success': True})
 
 
