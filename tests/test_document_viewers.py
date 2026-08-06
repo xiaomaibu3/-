@@ -1,3 +1,4 @@
+import hashlib
 import os
 from html.parser import HTMLParser
 from pathlib import Path
@@ -246,6 +247,24 @@ const files = Object.fromEntries(['pdf','docx','stp','step','doc','x_t','x_b'].m
         orbit_controls = (ROOT / "static/vendor/three/examples/jsm/controls/OrbitControls.js").read_text(encoding="utf-8")
         self.assertIn("from '../../../three.core.min.js'", orbit_controls)
         self.assertNotRegex(orbit_controls, r"from\s+['\"]three['\"]")
+
+    def test_viewer_asset_fetch_script_is_staged_and_hash_pinned(self):
+        script = (ROOT / "scripts/fetch-viewer-assets.ps1").read_text(encoding="utf-8")
+        self.assertIn('.viewer-assets-staging-$PID', script)
+        self.assertIn("Get-FileHash -LiteralPath $destination -Algorithm SHA256", script)
+        self.assertGreaterEqual(len(re.findall(r"Sha256\s*=\s*'[0-9A-F]{64}'", script)), 10)
+        self.assertIn("New-Object System.Text.UTF8Encoding($false)", script)
+        self.assertIn("Invalid WASM header", script)
+        self.assertIn("HTML error page downloaded", script)
+        self.assertLess(script.index("foreach ($asset in $assets)"), script.index("Move-Item -LiteralPath $staging -Destination $vendor"))
+        entries = re.findall(
+            r"RelativePath = '([^']+)'; Url = '[^']+'; Sha256 = '([0-9A-F]{64})'(?:; PublishedSha256 = '([0-9A-F]{64})')?",
+            script,
+        )
+        self.assertEqual(len(entries), 9)
+        for relative_path, download_hash, published_hash in entries:
+            blob = (ROOT / "static/vendor" / relative_path).read_bytes()
+            self.assertEqual(hashlib.sha256(blob).hexdigest().upper(), published_hash or download_hash, relative_path)
 
     def test_viewer_mobile_rules_are_scoped(self):
         blocks = [body for _, body in media_blocks(CSS)]
