@@ -21,3 +21,5 @@ android-xinggui/.downloads/
 
 server.log
 server.err.log
+
+.worktrees/
