@@ -165,6 +165,85 @@
     function downloadFileViewerSource() { const target = downloadTarget(state.file); const link = element('file-viewer-download'); if (link) link.href = target || ''; return Boolean(target); }
     function registerFileViewerRenderer(type, renderer) { if (type && typeof renderer === 'function') renderers[type] = renderer; return renderer; }
 
+    let pdfModulePromise;
+    function loadPdfModule() {
+        if (!pdfModulePromise) pdfModulePromise = import('/static/vendor/pdfjs/pdf.mjs');
+        return pdfModulePromise;
+    }
+    function localPixelRatio() {
+        const mobile = root.matchMedia && root.matchMedia('(max-width: 700px)').matches;
+        return Math.min(Number(root.devicePixelRatio) || 1, mobile ? 1.5 : 2);
+    }
+    async function renderPdf(target, file) {
+        const response = await root.fetch(file.previewUrl, { credentials: 'include' });
+        if (!response.ok) throw new Error('PDF preview request failed');
+        const bytes = await response.arrayBuffer();
+        const pdfjs = await loadPdfModule();
+        pdfjs.GlobalWorkerOptions.workerSrc = '/static/vendor/pdfjs/pdf.worker.mjs';
+        const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+        const controls = element('pdf-viewer-controls');
+        const pageLabel = element('pdf-page-number');
+        const pages = root.document.createElement('div');
+        pages.className = 'pdf-pages';
+        target.appendChild(pages);
+        let scale = 1;
+        let rotation = 0;
+        let fitWidth = false;
+        async function draw() {
+            pages.innerHTML = '';
+            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+                const page = await pdf.getPage(pageNumber);
+                let viewport = page.getViewport({ scale, rotation });
+                if (fitWidth) {
+                    const width = target.clientWidth || 900;
+                    scale = Math.max(0.25, (width - 24) / viewport.width * scale);
+                    viewport = page.getViewport({ scale, rotation });
+                }
+                const canvas = root.document.createElement('canvas');
+                canvas.className = 'pdf-viewer-page';
+                const ratio = localPixelRatio();
+                canvas.width = Math.floor(viewport.width * ratio);
+                canvas.height = Math.floor(viewport.height * ratio);
+                canvas.style.width = `${viewport.width}px`;
+                canvas.style.height = `${viewport.height}px`;
+                pages.appendChild(canvas);
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport, transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0] }).promise;
+            }
+            if (pageLabel) pageLabel.textContent = `共 ${pdf.numPages} 页`;
+        }
+        function listen(id, handler) {
+            const button = element(id);
+            if (button && button.addEventListener) button.addEventListener('click', handler);
+            return () => button && button.removeEventListener && button.removeEventListener('click', handler);
+        }
+        const cleanups = [
+            listen('pdf-zoom-in', () => { scale = Math.min(scale + 0.25, 4); fitWidth = false; draw(); }),
+            listen('pdf-zoom-out', () => { scale = Math.max(scale - 0.25, 0.25); fitWidth = false; draw(); }),
+            listen('pdf-rotate', () => { rotation = (rotation + 90) % 360; draw(); }),
+            listen('pdf-fit-width', () => { fitWidth = true; draw(); }),
+        ];
+        if (controls) controls.hidden = false;
+        await draw();
+        return { cleanup: () => { cleanups.forEach(cleanup => cleanup()); if (controls) controls.hidden = true; } };
+    }
+    async function renderDocx(target, file) {
+        const response = await root.fetch(file.previewUrl, { credentials: 'include' });
+        if (!response.ok) throw new Error('DOCX preview request failed');
+        const buffer = await response.arrayBuffer();
+        if (!root.docx || typeof root.docx.renderAsync !== 'function') throw new Error('DOCX renderer unavailable');
+        const isolated = root.document.createElement('div');
+        isolated.className = 'docx-render-container';
+        isolated.setAttribute('aria-label', 'DOCX preview');
+        target.appendChild(isolated);
+        await root.docx.renderAsync(buffer, isolated, null, { inWrapper: true, breakPages: true, ignoreWidth: false, ignoreHeight: false, useBase64URL: true, experimental: false, renderHeaders: true, renderFooters: true, renderFootnotes: true, renderEndnotes: true, debug: false, scripts: false });
+        isolated.querySelectorAll && isolated.querySelectorAll('script').forEach(script => script.remove());
+        return { cleanup: () => { isolated.innerHTML = ''; } };
+    }
+    if (typeof root.fetch === 'function') {
+        registerFileViewerRenderer('pdf', renderPdf);
+        registerFileViewerRenderer('word', renderDocx);
+    }
+
     if (root.document && root.document.addEventListener) {
         root.document.addEventListener('keydown', event => {
             if (event.key === 'Escape' && state.file) closeFileViewer();

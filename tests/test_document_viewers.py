@@ -132,6 +132,30 @@ def runtime_source():
 
 
 class DocumentViewerContractTest(unittest.TestCase):
+    def test_pdf_renderer_contract_uses_local_pdfjs_and_controls(self):
+        source = runtime_source()
+        for asset in ("/static/vendor/pdfjs/pdf.mjs", "/static/vendor/pdfjs/pdf.worker.mjs"):
+            self.assertIn(asset, source)
+        self.assertIn("getDocument", source)
+        self.assertRegex(source, r"fetch\s*\(\s*file\.previewUrl|fetch\s*\(\s*.*previewUrl")
+        self.assertIn("credentials: 'include'", source)
+        for control in ("pdf-page-number", "pdf-zoom-in", "pdf-zoom-out", "pdf-rotate", "pdf-fit-width"):
+            self.assertIn(control, TEMPLATE, f"missing PDF control: {control}")
+        self.assertRegex(source, r"canvas|getViewport|render\s*\(")
+        self.assertRegex(source, r"devicePixelRatio|pixelRatio")
+
+    def test_docx_renderer_contract_fetches_securely_and_uses_local_dependencies(self):
+        source = runtime_source()
+        self.assertIn("/static/vendor/docx-preview/docx-preview.min.js", source)
+        self.assertIn("/static/vendor/jszip/jszip.min.js", source)
+        self.assertIn("previewUrl", source)
+        self.assertIn("credentials: 'include'", source)
+        self.assertIn("arrayBuffer()", source)
+        self.assertIn("docx.renderAsync", source)
+        self.assertRegex(source, r"in隔离容器|isolat|render.*container")
+        self.assertRegex(source, r"禁用脚本|scripts\s*:\s*false|allowScripts\s*:\s*false|script")
+        self.assertRegex(source, r"ready|error")
+
     def test_dashboard_declares_viewer_dom_and_local_script(self):
         parser = DashboardParser()
         parser.feed(TEMPLATE)
