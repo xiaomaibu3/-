@@ -170,6 +170,16 @@
         if (!pdfModulePromise) pdfModulePromise = import('/static/vendor/pdfjs/pdf.mjs');
         return pdfModulePromise;
     }
+    let threeModulePromise;
+    function loadThreeModule() {
+        if (!threeModulePromise) threeModulePromise = import('/static/vendor/three/three.module.min.js');
+        return threeModulePromise;
+    }
+    let occtModulePromise;
+    function loadOcctModule() {
+        if (!occtModulePromise) occtModulePromise = Promise.resolve(root.occtimportjs || null);
+        return occtModulePromise;
+    }
     function localPixelRatio() {
         const mobile = root.matchMedia && root.matchMedia('(max-width: 700px)').matches;
         return Math.min(Number(root.devicePixelRatio) || 1, mobile ? 1.5 : 2);
@@ -261,6 +271,128 @@
         queueDraw().catch(error => { if (!disposed) { setState('error'); setText('file-viewer-status', 'Preview failed. Download the source.'); } });
         return { cleanup };
     }
+    async function renderCad(target, file) {
+        const response = await root.fetch(file.previewUrl, { credentials: 'include' });
+        if (!response.ok) throw new Error('CAD preview request failed');
+        const buffer = await response.arrayBuffer();
+        const three = await loadThreeModule();
+        const occtFactory = await loadOcctModule();
+        if (typeof occtFactory !== 'function') throw new Error('CAD parser unavailable');
+        const occt = await occtFactory();
+        const result = occt.ReadStepFile(new Uint8Array(buffer), null);
+        if (!result || !result.success || !Array.isArray(result.meshes) || !result.meshes.length) throw new Error('CAD parse failed');
+        const controls = element('cad-viewer-controls');
+        const resetButton = element('cad-reset');
+        const fitButton = element('cad-fit');
+        const wireButton = element('cad-wireframe');
+        const canvas = root.document.createElement('canvas');
+        canvas.className = 'cad-canvas';
+        canvas.setAttribute('aria-label', 'CAD preview');
+        target.appendChild(canvas);
+        const renderer = new three.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setClearColor(0xf8fafc, 1);
+        renderer.setPixelRatio(localPixelRatio());
+        const scene = new three.Scene();
+        scene.background = new three.Color(0xf8fafc);
+        const camera = new three.PerspectiveCamera(45, 1, 0.1, 1000000);
+        camera.up.set(0, 0, 1);
+        const model = new three.Group();
+        scene.add(model);
+        scene.add(new three.AmbientLight(0xffffff, 1.8));
+        const light = new three.DirectionalLight(0xffffff, 1.2);
+        light.position.set(1, 1, 1);
+        scene.add(light);
+        const orbit = new three.OrbitControls(camera, canvas);
+        orbit.enableDamping = true;
+        orbit.screenSpacePanning = true;
+        let disposed = false;
+        let raf = 0;
+        let wireframe = false;
+        const disposables = [];
+        function buildMesh(meshData) {
+            const geometry = new three.BufferGeometry();
+            geometry.setAttribute('position', new three.Float32BufferAttribute(meshData.attributes.position.array, 3));
+            if (meshData.attributes.normal) geometry.setAttribute('normal', new three.Float32BufferAttribute(meshData.attributes.normal.array, 3));
+            if (meshData.index && meshData.index.array) geometry.setIndex(Array.from(meshData.index.array));
+            const color = Array.isArray(meshData.color) ? new three.Color(meshData.color[0], meshData.color[1], meshData.color[2]) : new three.Color(0.82, 0.82, 0.84);
+            const material = new three.MeshStandardMaterial({ color, metalness: 0.05, roughness: 0.85, side: three.DoubleSide });
+            const mesh = new three.Mesh(geometry, material);
+            disposables.push(geometry, material);
+            model.add(mesh);
+            if (wireframe) {
+                const wireGeometry = new three.WireframeGeometry(geometry);
+                const edges = new three.LineSegments(wireGeometry, new three.LineBasicMaterial({ color: 0x111111 }));
+                disposables.push(wireGeometry);
+                disposables.push(edges.geometry, edges.material);
+                model.add(edges);
+            }
+        }
+        function fitModel() {
+            const box = new three.Box3().setFromObject(model);
+            if (box.isEmpty()) return;
+            const size = box.getSize(new three.Vector3());
+            const center = box.getCenter(new three.Vector3());
+            const distance = Math.max(size.x, size.y, size.z) * 1.4 || 1;
+            camera.position.set(center.x + distance, center.y + distance, center.z + distance);
+            camera.near = Math.max(distance / 1000, 0.01);
+            camera.far = distance * 1000;
+            camera.updateProjectionMatrix();
+            orbit.target.copy(center);
+            orbit.update();
+        }
+        function resize() {
+            const width = Math.max(target.clientWidth || 1, 1);
+            const height = Math.max(target.clientHeight || 1, 1);
+            renderer.setSize(width, height, false);
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+        }
+        function renderLoop() {
+            if (disposed) return;
+            raf = root.requestAnimationFrame ? root.requestAnimationFrame(renderLoop) : 0;
+            orbit.update();
+            renderer.render(scene, camera);
+        }
+        const resizeObserver = root.ResizeObserver ? new root.ResizeObserver(() => { resize(); fitModel(); }) : null;
+        if (resizeObserver) resizeObserver.observe(target);
+        function clearModel() {
+            while (model.children.length) model.remove(model.children[0]);
+        }
+        function rebuild() {
+            clearModel();
+            for (const meshData of result.meshes) buildMesh(meshData);
+            fitModel();
+        }
+        function listen(id, handler) {
+            const button = element(id);
+            if (button && button.addEventListener) button.addEventListener('click', handler);
+            return () => button && button.removeEventListener && button.removeEventListener('click', handler);
+        }
+        const cleanupFns = [
+            listen('cad-reset', () => { orbit.reset(); fitModel(); }),
+            listen('cad-fit', () => fitModel()),
+            listen('cad-wireframe', () => { wireframe = !wireframe; rebuild(); }),
+        ];
+        rebuild();
+        resize();
+        renderLoop();
+        if (controls) controls.hidden = false;
+        if (wireButton) wireButton.setAttribute('aria-pressed', wireframe ? 'true' : 'false');
+        return {
+            cleanup: () => {
+                disposed = true;
+                if (raf && root.cancelAnimationFrame) root.cancelAnimationFrame(raf);
+                cleanupFns.forEach(cleanup => { try { cleanup(); } catch (error) {} });
+                if (resizeObserver) resizeObserver.disconnect();
+                orbit.dispose();
+                renderer.dispose();
+                disposables.forEach(item => { try { item.dispose && item.dispose(); } catch (error) {} });
+                if (canvas.remove) canvas.remove();
+                if (controls) controls.hidden = true;
+                if (wireButton) wireButton.setAttribute('aria-pressed', 'false');
+            }
+        };
+    }
     function sanitizeDocxHtml(html) {
         const template = root.document.createElement('template');
         template.innerHTML = html;
@@ -294,6 +426,7 @@
     if (typeof root.fetch === 'function') {
         registerFileViewerRenderer('pdf', renderPdf);
         registerFileViewerRenderer('word', renderDocx);
+        registerFileViewerRenderer('cad', renderCad);
     }
 
     if (root.document && root.document.addEventListener) {

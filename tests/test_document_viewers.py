@@ -179,6 +179,34 @@ class DocumentViewerContractTest(unittest.TestCase):
         for contract in ("javascript:", "vbscript:", "data:", "file:", "on*"):
             self.assertIn(contract, source, f"missing DOCX sanitization contract: {contract}")
 
+    def test_cad_renderer_contract_renders_step_with_local_webgl_dependencies(self):
+        source = runtime_source()
+        for asset in (
+            "/static/vendor/three/three.module.min.js",
+            "/static/vendor/three/examples/jsm/controls/OrbitControls.js",
+            "/static/vendor/occt-import-js/occt-import-js.js",
+            "/static/vendor/occt-import-js/occt-import-js.wasm",
+        ):
+            self.assertIn(asset, source)
+        self.assertRegex(source, r"registerFileViewerRenderer\(['\"]cad['\"]")
+        self.assertRegex(source, r"function\s+renderCad|async\s+function\s+renderCad")
+        self.assertRegex(source, r"ReadStepFile")
+        for contract in (
+            "PerspectiveCamera",
+            "WebGLRenderer",
+            "OrbitControls",
+            "BufferGeometry",
+            "MeshStandardMaterial",
+            "WireframeGeometry",
+            "ResizeObserver",
+            "requestAnimationFrame",
+            "cancelAnimationFrame",
+            "dispose",
+        ):
+            self.assertIn(contract, source, f"missing CAD rendering contract: {contract}")
+        for control in ("cad-reset", "cad-fit", "cad-wireframe"):
+            self.assertIn(control, TEMPLATE, f"missing CAD control: {control}")
+
     def test_dashboard_declares_viewer_dom_and_local_script(self):
         parser = DashboardParser()
         parser.feed(TEMPLATE)

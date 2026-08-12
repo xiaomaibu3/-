@@ -1,4 +1,4 @@
-const CACHE_NAME = 'xinggui-pwa-1.0.5';
+const CACHE_NAME = 'xinggui-pwa-1.0.6';
 const SHELL_ASSETS = [
   '/static/css/style.css',
   '/static/js/app.js',

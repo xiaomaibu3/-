@@ -658,6 +658,72 @@ tr:last-child td {
     gap: 8px;
 }
 
+.permission-hidden {
+    display: none !important;
+}
+
+[data-permission][disabled] {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.permission-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.permission-summary > div,
+.permission-role-card {
+    background: var(--surface);
+}
+
+.permission-summary > div {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+}
+
+.permission-summary-label {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.permission-summary-value {
+    color: var(--text);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.permission-role-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.permission-role-card {
+    min-height: 92px;
+    cursor: default;
+}
+
+.permission-role-card:hover {
+    border-color: var(--border);
+    background: var(--surface);
+}
+
+@media (max-width: 900px) {
+    .permission-role-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .permission-summary,
+    .permission-role-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .file-viewer-modal {
     position: fixed;
     inset: 0;
@@ -674,7 +740,7 @@ tr:last-child td {
 .file-viewer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
 .file-viewer-toolbar h2 { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
 .file-viewer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.pdf-viewer-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pdf-viewer-controls, .cad-viewer-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .pdf-page-number { width: 4.5rem; min-height: 36px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--card); color: var(--text); }
 .pdf-viewer-page { display: block; margin: 0 auto 16px; max-width: 100%; height: auto; background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.18); }
 .word-viewer .file-viewer-generation { background: #fff; color: #111; padding: 16px; overflow: auto; }
