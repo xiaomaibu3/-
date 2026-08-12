@@ -7,6 +7,49 @@
 const $ = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
 
+const APP_CONTEXT = window.APP_CONTEXT || {};
+const CURRENT_PERMISSIONS = new Set(APP_CONTEXT.permissions || []);
+const PAGE_PERMISSIONS = {
+    dashboard: 'dashboard.view',
+    projects: 'projects.view',
+    'project-detail': 'projects.view',
+    files: 'files.view',
+    requirements: 'requirements.view',
+    drawings: 'drawings.view',
+    bom: 'boms.view',
+    'bom-detail': 'boms.view',
+    approvals: 'approvals.view',
+    users: 'users.view',
+    settings: 'settings.view',
+};
+
+function hasPermission(permission) {
+    return !permission || CURRENT_PERMISSIONS.has(permission);
+}
+
+function can(permission) {
+    return hasPermission(permission);
+}
+
+function permissionAttrs(permission) {
+    return permission ? `data-permission="${permission}"` : '';
+}
+
+function guardPermission(permission, message = '权限不足') {
+    if (can(permission)) return true;
+    toast(message, 'error');
+    return false;
+}
+
+function applyPermissionVisibility(root = document) {
+    $$('[data-permission]', root).forEach(el => {
+        const allowed = can(el.dataset.permission);
+        el.classList.toggle('permission-hidden', !allowed);
+        if ('disabled' in el) el.disabled = !allowed;
+        el.setAttribute('aria-hidden', allowed ? 'false' : 'true');
+    });
+}
+
 function toast(msg, type = 'success') {
     const container = $('.toast-container') || (() => {
         const d = document.createElement('div');
@@ -147,6 +190,7 @@ async function renderPageContent(content, page, params, previousPage) {
     if (prefersReducedMotion() || !previousPage || previousPage === page) {
         try {
             await routes[page](content, params);
+            applyPermissionVisibility(content);
         } finally {
             content.classList.remove('page-transition-out', 'page-transition-in');
         }
@@ -158,6 +202,7 @@ async function renderPageContent(content, page, params, previousPage) {
     try {
         await waitForTransition(PAGE_TRANSITION_MS);
         await routes[page](content, params);
+        applyPermissionVisibility(content);
         content.classList.remove('page-transition-out');
         content.classList.add('page-transition-in');
         window.setTimeout(() => content.classList.remove('page-transition-in'), PAGE_TRANSITION_MS + 80);
@@ -168,6 +213,9 @@ async function renderPageContent(content, page, params, previousPage) {
 }
 
 async function navigateTo(page, params = {}) {
+    if (!guardPermission(PAGE_PERMISSIONS[page], '当前角色无权访问此页面')) {
+        return;
+    }
     const previousPage = currentPage;
     currentPage = page;
     const content = $('#page-content');
@@ -185,6 +233,7 @@ async function navigateTo(page, params = {}) {
 
 // ── 初始化 ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    applyPermissionVisibility();
     // 导航点击
     $$('.nav-item[data-page]').forEach(el => {
         el.addEventListener('click', (e) => {

@@ -81,6 +81,91 @@ def role_required(*roles):
     return decorator
 
 
+ROLE_ALIASES = {
+    '系统管理员': '管理员',
+    '项目管理员': '项目经理',
+    '项目经理': '项目经理',
+    '设计工程师': '普通成员',
+    '需求工程师': '普通成员',
+    '文控/质量': '普通成员',
+    '管理员': '管理员',
+    '普通成员': '普通成员',
+    '只读访客': '只读访客',
+}
+
+PERMISSIONS = {
+    '管理员': {
+        'dashboard.view',
+        'projects.view', 'projects.create', 'projects.edit', 'projects.delete',
+        'files.view', 'files.upload', 'files.download', 'files.preview', 'files.delete',
+        'requirements.view', 'requirements.create', 'requirements.edit', 'requirements.delete',
+        'drawings.view', 'drawings.create', 'drawings.edit', 'drawings.delete',
+        'boms.view', 'boms.create', 'boms.edit', 'boms.delete', 'boms.import', 'boms.export',
+        'approvals.view', 'approvals.act',
+        'users.view', 'users.create', 'users.edit', 'users.delete',
+        'settings.view', 'settings.edit', 'audit.view',
+    },
+    '项目经理': {
+        'dashboard.view',
+        'projects.view', 'projects.create', 'projects.edit', 'projects.delete',
+        'files.view', 'files.upload', 'files.download', 'files.preview', 'files.delete',
+        'requirements.view', 'requirements.create', 'requirements.edit', 'requirements.delete',
+        'drawings.view', 'drawings.create', 'drawings.edit', 'drawings.delete',
+        'boms.view', 'boms.create', 'boms.edit', 'boms.delete', 'boms.import', 'boms.export',
+        'approvals.view', 'approvals.act', 'audit.view',
+    },
+    '普通成员': {
+        'dashboard.view',
+        'projects.view',
+        'files.view', 'files.upload', 'files.download', 'files.preview',
+        'requirements.view', 'requirements.create', 'requirements.edit',
+        'drawings.view', 'drawings.create', 'drawings.edit',
+        'boms.view', 'boms.create', 'boms.edit', 'boms.import', 'boms.export',
+        'approvals.view', 'approvals.act', 'audit.view',
+    },
+    '只读访客': {
+        'dashboard.view', 'projects.view',
+        'files.view', 'files.download', 'files.preview',
+        'requirements.view', 'drawings.view', 'boms.view',
+        'approvals.view', 'audit.view',
+    },
+}
+
+
+def normalized_role(role):
+    return ROLE_ALIASES.get(role or '', role or '')
+
+
+def permissions_for_role(role):
+    return set(PERMISSIONS.get(normalized_role(role), set()))
+
+
+def has_permission(role, permission):
+    return permission in permissions_for_role(role)
+
+
+def permission_required(permission):
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not has_permission(session.get('role'), permission):
+                return jsonify({'error': '权限不足'}), 403
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
+def permission_context():
+    role = normalized_role(session.get('role'))
+    permissions = sorted(permissions_for_role(role))
+    return {
+        'role': role,
+        'raw_role': session.get('role', ''),
+        'permissions': permissions,
+        'role_permissions': {name: sorted(values) for name, values in PERMISSIONS.items()},
+    }
+
+
 def log_action(action, target_type='', target_id=0, details=''):
     """记录审计日志"""
     try:
@@ -176,7 +261,7 @@ def setup_page():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    return render_template('dashboard.html')
+    return render_template('dashboard.html', permission_context=permission_context())
 
 
 # ── 项目管理 API ─────────────────────────────────────────────────────────
@@ -194,6 +279,7 @@ def api_projects_list():
 
 @app.route('/api/projects', methods=['POST'])
 @login_required
+@permission_required('projects.create')
 def api_projects_create():
     data = request.get_json()
     with get_db(config.db_path) as conn:
@@ -235,6 +321,7 @@ def api_projects_get(pid):
 
 @app.route('/api/projects/<int:pid>', methods=['PUT'])
 @login_required
+@permission_required('projects.edit')
 def api_projects_update(pid):
     data = request.get_json()
     fields = []
@@ -258,7 +345,7 @@ def api_projects_update(pid):
 
 @app.route('/api/projects/<int:pid>', methods=['DELETE'])
 @login_required
-@role_required('系统管理员', '项目管理员')
+@permission_required('projects.delete')
 def api_projects_delete(pid):
     attachment_paths = []
     with get_db(config.db_path) as conn:
@@ -320,6 +407,7 @@ def api_files_list(pid):
 
 @app.route('/api/projects/<int:pid>/files/upload', methods=['POST'])
 @login_required
+@permission_required('files.upload')
 def api_files_upload(pid):
     if 'files' not in request.files:
         return jsonify({'error': '没有选择文件'})
@@ -397,6 +485,7 @@ def api_file_preview(fid):
 
 @app.route('/api/files/<int:fid>', methods=['DELETE'])
 @login_required
+@permission_required('files.delete')
 def api_file_delete(fid):
     with get_db(config.db_path) as conn:
         row = conn.execute("SELECT * FROM project_files WHERE id=?", (fid,)).fetchone()
@@ -420,7 +509,7 @@ def api_users_list():
 
 @app.route('/api/users', methods=['POST'])
 @login_required
-@role_required('系统管理员')
+@permission_required('users.create')
 def api_users_create():
     data = request.get_json()
     with get_db(config.db_path) as conn:
@@ -439,6 +528,7 @@ def api_users_create():
 
 @app.route('/api/users/<int:uid>', methods=['PUT'])
 @login_required
+@permission_required('users.edit')
 def api_users_update(uid):
     # 只能修改自己或管理员可修改所有人
     if session['user_id'] != uid and session['role'] != '系统管理员':
@@ -463,7 +553,7 @@ def api_users_update(uid):
 
 @app.route('/api/users/<int:uid>', methods=['DELETE'])
 @login_required
-@role_required('系统管理员')
+@permission_required('users.delete')
 def api_users_delete(uid):
     if uid == session['user_id']:
         return jsonify({'error': '不能删除当前登录用户'})
@@ -488,6 +578,7 @@ def api_requirements_list(pid):
 
 @app.route('/api/projects/<int:pid>/requirements', methods=['POST'])
 @login_required
+@permission_required('requirements.create')
 def api_requirements_create(pid):
     data = request.get_json()
     with get_db(config.db_path) as conn:
@@ -507,6 +598,7 @@ def api_requirements_create(pid):
 
 @app.route('/api/requirements/<int:rid>', methods=['PUT'])
 @login_required
+@permission_required('requirements.edit')
 def api_requirements_update(rid):
     data = request.get_json()
     fields, values = [], []
@@ -525,6 +617,7 @@ def api_requirements_update(rid):
 
 @app.route('/api/requirements/<int:rid>', methods=['DELETE'])
 @login_required
+@permission_required('requirements.delete')
 def api_requirements_delete(rid):
     with get_db(config.db_path) as conn:
         req = conn.execute("SELECT * FROM requirements WHERE id=?", (rid,)).fetchone()
@@ -581,6 +674,7 @@ def api_drawings_list(pid):
 
 @app.route('/api/projects/<int:pid>/drawings', methods=['POST'])
 @login_required
+@permission_required('drawings.create')
 def api_drawings_create(pid):
     drawing_number = request.form.get('drawing_number', '')
     drawing_name = request.form.get('drawing_name', '')
@@ -610,6 +704,7 @@ def api_drawings_create(pid):
 
 @app.route('/api/drawings/<int:did>', methods=['PUT'])
 @login_required
+@permission_required('drawings.edit')
 def api_drawings_update(did):
     data = request.get_json()
     fields, values = [], []
@@ -685,6 +780,7 @@ def api_drawings_preview(did):
 
 @app.route('/api/drawings/<int:did>/upload-new-version', methods=['POST'])
 @login_required
+@permission_required('drawings.edit')
 def api_drawings_upload_new(did):
     if 'file' not in request.files:
         return jsonify({'error': '没有选择文件'})
@@ -724,6 +820,7 @@ def api_boms_list(pid):
 
 @app.route('/api/projects/<int:pid>/boms', methods=['POST'])
 @login_required
+@permission_required('boms.create')
 def api_boms_create(pid):
     data = request.get_json() or {}
     version = data.get('version', 'V1.0')
@@ -769,6 +866,7 @@ def api_bom_items_create(bid):
 
 @app.route('/api/bom-items/<int:item_id>', methods=['PUT'])
 @login_required
+@permission_required('boms.edit')
 def api_bom_items_update(item_id):
     data = request.get_json()
     fields, values = [], []
@@ -787,6 +885,7 @@ def api_bom_items_update(item_id):
 
 @app.route('/api/bom-items/<int:item_id>', methods=['DELETE'])
 @login_required
+@permission_required('boms.delete')
 def api_bom_items_delete(item_id):
     with get_db(config.db_path) as conn:
         conn.execute("DELETE FROM bom_items WHERE id=?", (item_id,))
@@ -795,6 +894,7 @@ def api_bom_items_delete(item_id):
 
 @app.route('/api/boms/<int:bid>/duplicate', methods=['POST'])
 @login_required
+@permission_required('boms.create')
 def api_boms_duplicate(bid):
     """复制BOM创建新版本"""
     with get_db(config.db_path) as conn:
@@ -840,6 +940,7 @@ def api_boms_duplicate(bid):
 
 @app.route('/api/boms/<int:bid>/import', methods=['POST'])
 @login_required
+@permission_required('boms.import')
 def api_boms_import(bid):
     """从CSV/Excel导入BOM物料"""
     if 'file' not in request.files:
@@ -922,6 +1023,7 @@ def api_boms_import(bid):
 
 @app.route('/api/boms/<int:bid>/export', methods=['GET'])
 @login_required
+@permission_required('boms.export')
 def api_boms_export(bid):
     """导出BOM为Excel"""
     import io
@@ -1020,6 +1122,7 @@ def api_approvals_pending():
 
 @app.route('/api/approvals/<target_type>/<int:target_id>', methods=['POST'])
 @login_required
+@permission_required('approvals.act')
 def api_approvals_decide(target_type, target_id):
     """审批操作"""
     data = request.get_json()
@@ -1090,6 +1193,7 @@ def api_approvals_history():
 # ── 审计日志 API ─────────────────────────────────────────────────────────
 @app.route('/api/audit-logs', methods=['GET'])
 @login_required
+@permission_required('audit.view')
 def api_audit_logs():
     limit = request.args.get('limit', 50, type=int)
     with get_db(config.db_path) as conn:
@@ -1144,6 +1248,7 @@ def api_settings_get():
         'data_root': config.data_root,
         'project_number_rule': config.get('general', 'project_number_rule'),
         'project_types': config.get_project_types(),
+        'permissions': permission_context(),
         'approval_stages': {
             'requirement': config.get_approval_stages('requirement'),
             'drawing': config.get_approval_stages('drawing'),
@@ -1154,7 +1259,7 @@ def api_settings_get():
 
 @app.route('/api/settings/config', methods=['PUT'])
 @login_required
-@role_required('系统管理员')
+@permission_required('settings.edit')
 def api_settings_update():
     data = request.get_json()
     if 'project_number_rule' in data:
@@ -1172,7 +1277,7 @@ def api_settings_update():
 
 @app.route('/api/settings/backup', methods=['POST'])
 @login_required
-@role_required('系统管理员')
+@permission_required('settings.edit')
 def api_settings_backup():
     """备份数据库和附件为zip"""
     if not config.data_root:
@@ -1201,7 +1306,7 @@ def api_settings_backup():
 
 @app.route('/api/settings/restore', methods=['POST'])
 @login_required
-@role_required('系统管理员')
+@permission_required('settings.edit')
 def api_settings_restore():
     """从zip恢复"""
     if 'backup' not in request.files:
@@ -1234,7 +1339,7 @@ def api_approval_flows_list():
 
 @app.route('/api/approval-flows', methods=['POST'])
 @login_required
-@role_required('系统管理员')
+@permission_required('settings.edit')
 def api_approval_flows_create():
     data = request.get_json()
     with get_db(config.db_path) as conn:
@@ -1245,7 +1350,7 @@ def api_approval_flows_create():
 
 @app.route('/api/approval-flows/<int:fid>', methods=['DELETE'])
 @login_required
-@role_required('系统管理员')
+@permission_required('settings.edit')
 def api_approval_flows_delete(fid):
     with get_db(config.db_path) as conn:
         conn.execute("DELETE FROM approval_flows WHERE id=?", (fid,))

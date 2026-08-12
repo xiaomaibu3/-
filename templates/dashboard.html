@@ -7,9 +7,17 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>项目管理系统</title>
     <link rel="icon" href="/static/icons/app-icon.svg" type="image/svg+xml">
-    <link rel="manifest" href="/manifest.webmanifest">
-    <link rel="apple-touch-icon" href="/static/icons/app-icon-192.png">
-    <link rel="stylesheet" href="/static/css/style.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/app-icon-192.png">
+<link rel="stylesheet" href="/static/css/style.css">
+<script>
+window.APP_CONTEXT = {
+    role: {{ permission_context.role|tojson }},
+    rawRole: {{ permission_context.raw_role|tojson }},
+    permissions: {{ permission_context.permissions|tojson }},
+    rolePermissions: {{ permission_context.role_permissions|tojson }}
+};
+</script>
 </head>
 <body>
 <header class="mobile-app-bar">
@@ -25,7 +33,7 @@
                 项目管理系统
             </h1>
         </div>
-        <nav class="sidebar-nav">
+        <nav class="sidebar-nav" data-role="{{ permission_context.role }}">
             <div class="nav-section">
                 <div class="nav-section-title">概览</div>
                 <a class="nav-item active" data-page="dashboard" href="#">
@@ -61,10 +69,10 @@
             </div>
             <div class="nav-section">
                 <div class="nav-section-title">系统</div>
-                <a class="nav-item" data-page="users" href="#">
+                <a class="nav-item" data-page="users" href="#" data-permission="users.view">
                     <span class="icon">👥</span> 用户管理
                 </a>
-                <a class="nav-item" data-page="settings" href="#">
+                <a class="nav-item" data-page="settings" href="#" data-permission="settings.view">
                     <span class="icon">⚙️</span> 系统设置
                 </a>
             </div>
@@ -74,7 +82,7 @@
                 <div class="user-avatar">{{ session.real_name[0] if session.real_name else 'U' }}</div>
                 <div class="user-meta">
                     <div class="user-name">{{ session.real_name or session.username }}</div>
-                    <div class="user-role">{{ session.role }}</div>
+                    <div class="user-role">{{ permission_context.role }}</div>
                 </div>
                 <a href="/logout" class="btn btn-sm btn-icon" title="退出">🚪</a>
             </div>
@@ -104,7 +112,43 @@
     </div>
 </div>
 
+<div class="file-viewer-modal" id="file-viewer-modal" role="dialog" aria-modal="true" aria-labelledby="file-viewer-title" hidden>
+    <div class="file-viewer-shell">
+        <div class="file-viewer-toolbar">
+            <h2 id="file-viewer-title">文件预览</h2>
+            <div class="file-viewer-actions">
+                <span class="pdf-viewer-controls" id="pdf-viewer-controls" hidden>
+                    <button class="btn btn-sm" id="pdf-page-prev" type="button" aria-label="上一页">上一页</button>
+                    <input class="pdf-page-number" id="pdf-page-number" type="number" min="1" value="1" aria-label="当前页码">
+                    <span id="pdf-page-count">/ 0</span>
+                    <button class="btn btn-sm" id="pdf-page-next" type="button" aria-label="下一页">下一页</button>
+                    <button class="btn btn-sm" id="pdf-zoom-out" type="button" aria-label="缩小">−</button>
+                    <button class="btn btn-sm" id="pdf-zoom-in" type="button" aria-label="放大">+</button>
+                    <button class="btn btn-sm" id="pdf-rotate" type="button">旋转</button>
+                    <button class="btn btn-sm" id="pdf-fit-width" type="button">适宽</button>
+                </span>
+                <span class="cad-viewer-controls" id="cad-viewer-controls" hidden>
+                    <button class="btn btn-sm" id="cad-reset" type="button">重置</button>
+                    <button class="btn btn-sm" id="cad-fit" type="button">适宽</button>
+                    <button class="btn btn-sm" id="cad-wireframe" type="button" aria-pressed="false">线框</button>
+                </span>                <a class="btn btn-sm" id="file-viewer-download" href="#" download>下载</a>
+                <button class="btn btn-sm" id="file-viewer-close" type="button" onclick="closeFileViewer()">关闭</button>
+            </div>
+        </div>
+        <div class="file-viewer-status" id="file-viewer-status" role="status" aria-live="polite"></div>
+        <div class="file-viewer-root" id="file-viewer-root">
+            <div class="pdf-viewer" id="pdf-viewer" hidden></div>
+            <div class="word-viewer" id="word-viewer" hidden></div>
+            <div class="cad-viewer" id="cad-viewer" hidden></div>
+        </div>
+    </div>
+</div>
+
 <script src="/static/js/app.js"></script>
+<script src="/static/vendor/jszip/jszip.min.js"></script>
+<script src="/static/vendor/docx-preview/docx-preview.min.js"></script>
+<script src="/static/vendor/occt-import-js/occt-import-js.js"></script>
+<script src="/static/js/file-viewers.js"></script>
 <script src="/static/js/pwa.js"></script>
 <script>
 // ── 仪表盘 ──────────────────────────────────────────────────
@@ -223,7 +267,7 @@ registerPage('projects', async (el) => {
                 <input type="text" class="search-input" placeholder="搜索项目名称或编号..." id="project-search">
             </div>
             <div class="toolbar-right">
-                <button class="btn btn-primary" onclick="showCreateProject()">+ 新建项目</button>
+                <button class="btn btn-primary" data-permission="projects.create" onclick="showCreateProject()">+ 新建项目</button>
             </div>
         </div>
 
@@ -254,7 +298,7 @@ registerPage('projects', async (el) => {
                                 <td>${formatDate(p.created_at)}</td>
                                 <td class="actions">
                                     <button class="btn btn-sm" onclick="navigateTo('project-detail', {id:${p.id}})">查看</button>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteProject(${p.id})">删除</button>
+                                    <button class="btn btn-sm btn-danger" data-permission="projects.delete" onclick="deleteProject(${p.id})">删除</button>
                                 </td>
                             </tr>
                         `).join('')}
@@ -504,7 +548,7 @@ async function switchProjectTab(tabEl, tab, pid) {
         content.innerHTML = `
             <div class="toolbar">
                 <div class="toolbar-right">
-                    <button class="btn btn-primary" onclick="showCreateReq(${pid})">+ 新建需求</button>
+                    <button class="btn btn-primary" data-permission="requirements.create" onclick="showCreateReq(${pid})">+ 新建需求</button>
                 </div>
             </div>
             <div class="card">
@@ -539,7 +583,7 @@ async function switchProjectTab(tabEl, tab, pid) {
         content.innerHTML = `
             <div class="toolbar">
                 <div class="toolbar-right">
-                    <button class="btn btn-primary" onclick="showCreateDrawing(${pid})">+ 上传图纸</button>
+                    <button class="btn btn-primary" data-permission="drawings.create" onclick="showCreateDrawing(${pid})">+ 上传图纸</button>
                 </div>
             </div>
             <!-- 拖拽上传区 -->
@@ -599,8 +643,8 @@ async function switchProjectTab(tabEl, tab, pid) {
         content.innerHTML = `
             <div class="toolbar">
                 <div class="toolbar-right">
-                    <button class="btn" onclick="showImportBOMDirect(${pid})">📥 导入BOM</button>
-                    <button class="btn btn-primary" onclick="createBOM(${pid})">+ 新建BOM</button>
+                    <button class="btn" data-permission="boms.import" onclick="showImportBOMDirect(${pid})">📥 导入BOM</button>
+                    <button class="btn btn-primary" data-permission="boms.create" onclick="createBOM(${pid})">+ 新建BOM</button>
                 </div>
             </div>
             <div class="card">
@@ -618,8 +662,8 @@ async function switchProjectTab(tabEl, tab, pid) {
                                     <td>${formatDateTime(b.created_at)}</td>
                                     <td class="actions">
                                         <button class="btn btn-sm" onclick="navigateTo('bom-detail', {id:${b.id}})">📋 查看/编辑</button>
-                                        <button class="btn btn-sm" onclick="showImportBOMToVersion(${b.id})">📥 导入</button>
-                                        <button class="btn btn-sm" onclick="duplicateBOM(${b.id}, ${pid})">复制版本</button>
+                                        <button class="btn btn-sm" data-permission="boms.import" onclick="showImportBOMToVersion(${b.id})">📥 导入</button>
+                                        <button class="btn btn-sm" data-permission="boms.create" onclick="duplicateBOM(${b.id}, ${pid})">复制版本</button>
                                         <a class="btn btn-sm" href="/api/boms/${b.id}/export">⬇ 导出</a>
                                         <button class="btn btn-sm" onclick="checkBOMConsistency(${b.id})">校验</button>
                                     </td>
@@ -732,7 +776,7 @@ function showCreateReq(pid) {
     `;
     $('#modal-footer').innerHTML = `
         <button class="btn" onclick="hideModal('modal-main')">取消</button>
-        <button class="btn btn-primary" onclick="createReq(${pid})">创建</button>
+        <button class="btn btn-primary" data-permission="requirements.create" onclick="createReq(${pid})">创建</button>
     `;
     showModal('modal-main');
 }
@@ -775,7 +819,7 @@ async function showReqChanges(rid) {
     $('#modal-title').textContent = '需求变更记录';
     $('#modal-body').innerHTML = `
         <div style="margin-bottom:16px">
-            <button class="btn btn-primary btn-sm" onclick="showCreateReqChange(${rid})">+ 提交变更</button>
+            <button class="btn btn-primary btn-sm" data-permission="requirements.edit" onclick="showCreateReqChange(${rid})">+ 提交变更</button>
         </div>
         ${(changes || []).map(c => `
             <div style="padding:12px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px">
@@ -860,7 +904,7 @@ function showCreateDrawing(pid) {
     `;
     $('#modal-footer').innerHTML = `
         <button class="btn" onclick="hideModal('modal-main')">取消</button>
-        <button class="btn btn-primary" onclick="createDrawing(${pid})">上传</button>
+        <button class="btn btn-primary" data-permission="drawings.create" onclick="createDrawing(${pid})">上传</button>
     `;
     showModal('modal-main');
 }
@@ -976,36 +1020,18 @@ async function uploadNewVersion(did, pid) {
 function previewDrawing(did, filePath, drawingName) {
     const ext = filePath.split('.').pop().toLowerCase();
     const previewUrl = `/api/drawings/${did}/preview`;
-
-    if (ext === 'pdf') {
-        // PDF: 新标签页查看
-        window.open(previewUrl, '_blank');
-    } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
-        // 图片: 弹窗查看
+    const downloadUrl = `/api/drawings/${did}/download`;
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
+        resetFileViewer();
         $('#modal-title').textContent = drawingName;
-        $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" style="max-width:100%;max-height:70vh;border-radius:var(--radius)"></div>`;
+        $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" alt="${drawingName}" style="max-width:100%;max-height:70vh"></div>`;
         $('#modal-footer').innerHTML = `<a class="btn" href="/api/drawings/${did}/download">下载原文件</a> <button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
         showModal('modal-main');
-    } else if (['dwg', 'stp', 'step', 'dxf'].includes(ext)) {
-        // DWG/STP: 提供下载（浏览器无法直接渲染）
-        $('#modal-title').textContent = `图纸预览 - ${drawingName}`;
-        $('#modal-body').innerHTML = `
-            <div style="text-align:center;padding:24px">
-                <div style="font-size:48px;margin-bottom:16px">📐</div>
-                <h3 style="margin-bottom:8px">${drawingName}</h3>
-                <p style="color:var(--text-muted);margin-bottom:4px">文件格式: <strong>${ext.toUpperCase()}</strong></p>
-                <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px">
-                    ${ext === 'dwg' ? 'DWG 格式需要使用 AutoCAD 或兼容软件打开' : 'STP/STEP 格式需要使用 3D CAD 软件打开'}
-                </p>
-                <a class="btn btn-primary" href="/api/drawings/${did}/download" style="margin-right:8px">⬇ 下载文件</a>
-            </div>
-        `;
-        $('#modal-footer').innerHTML = `<button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
-        showModal('modal-main');
-    } else {
-        // 其他格式: 尝试新标签页
-        window.open(previewUrl, '_blank');
+        return;
     }
+    if (!['pdf', 'docx', 'stp', 'step', 'doc', 'x_t', 'x_b'].includes(ext)) return location.assign(downloadUrl);
+    hideModal('modal-main');
+    return openFileViewer({name: drawingName || filePath, fileName: filePath, extension: ext, previewUrl, downloadUrl});
 }
 
 // ── 图纸批量上传 ──────────────────────────────────────────────
@@ -1110,8 +1136,8 @@ registerPage('bom-detail', async (el, params) => {
                        oninput="searchBOMItems(this.value)">
             </div>
             <div class="toolbar-right">
-                <button class="btn btn-primary" onclick="showAddBOMItem(${bid})">+ 添加物料</button>
-                <button class="btn" onclick="showImportBOMToVersion(${bid})">📥 批量导入</button>
+                <button class="btn btn-primary" data-permission="boms.edit" onclick="showAddBOMItem(${bid})">+ 添加物料</button>
+                <button class="btn" data-permission="boms.import" onclick="showImportBOMToVersion(${bid})">📥 批量导入</button>
                 <button class="btn" onclick="checkBOMConsistency(${bid})">🔍 一致性校验</button>
                 <a class="btn" href="/api/boms/${bid}/export">⬇ 导出Excel</a>
             </div>
@@ -1173,7 +1199,7 @@ registerPage('bom-detail', async (el, params) => {
                                 <td>${item.check_status ? `<span class="badge ${getBadgeClass(item.check_status)}">${item.check_status}</span>` : '-'}</td>
                                 <td class="actions">
                                     <button class="btn btn-sm" onclick="editBOMItem(${JSON.stringify(item).replace(/"/g, '&quot;')}, ${bid})">编辑</button>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteBOMItem(${item.id}, ${bid})">删除</button>
+                                    <button class="btn btn-sm btn-danger" data-permission="boms.delete" onclick="deleteBOMItem(${item.id}, ${bid})">删除</button>
                                 </td>
                             </tr>
                         `).join('')}
@@ -1234,8 +1260,8 @@ function showAddBOMItem(bid) {
     `;
     $('#modal-footer').innerHTML = `
         <button class="btn" onclick="hideModal('modal-main')">取消</button>
-        <button class="btn btn-primary" onclick="addBOMItem(${bid})">添加</button>
-        <button class="btn" onclick="addBOMItemAndContinue(${bid})">添加并继续</button>
+        <button class="btn btn-primary" data-permission="boms.edit" onclick="addBOMItem(${bid})">添加</button>
+        <button class="btn" data-permission="boms.edit" onclick="addBOMItemAndContinue(${bid})">添加并继续</button>
     `;
     showModal('modal-main');
     // 自动聚焦名称输入框
@@ -1683,8 +1709,8 @@ async function filterBOMs() {
                                 <td>${formatDateTime(b.created_at)}</td>
                                 <td class="actions">
                                     <button class="btn btn-sm" onclick="navigateTo('bom-detail', {id:${b.id}})">📋 查看/编辑</button>
-                                    <button class="btn btn-sm" onclick="showImportBOMToVersion(${b.id})">📥 导入</button>
-                                    <button class="btn btn-sm" onclick="duplicateBOM(${b.id}, ${pid})">复制版本</button>
+                                    <button class="btn btn-sm" data-permission="boms.import" onclick="showImportBOMToVersion(${b.id})">📥 导入</button>
+                                    <button class="btn btn-sm" data-permission="boms.create" onclick="duplicateBOM(${b.id}, ${pid})">复制版本</button>
                                     <a class="btn btn-sm" href="/api/boms/${b.id}/export">⬇ 导出Excel</a>
                                     <button class="btn btn-sm" onclick="checkBOMConsistency(${b.id})">校验</button>
                                 </td>
@@ -1831,8 +1857,8 @@ registerPage('approvals', async (el) => {
                                     <td>${p.title}</td>
                                     <td>${formatDateTime(p.created_at)}</td>
                                     <td class="actions">
-                                        <button class="btn btn-sm btn-primary" onclick="approveItem('${p.type}', ${p.id})">通过</button>
-                                        <button class="btn btn-sm btn-danger" onclick="rejectItem('${p.type}', ${p.id})">驳回</button>
+                                        <button class="btn btn-sm btn-primary" data-permission="approvals.act" onclick="approveItem('${p.type}', ${p.id})">通过</button>
+                                        <button class="btn btn-sm btn-danger" data-permission="approvals.act" onclick="rejectItem('${p.type}', ${p.id})">驳回</button>
                                     </td>
                                 </tr>
                             `).join('')}
@@ -1905,7 +1931,7 @@ async function doApproval(type, id, decision) {
 // ── 用户管理 ──────────────────────────────────────────────────
 registerPage('users', async (el) => {
     const users = await api('/api/users');
-    const roles = ['项目管理员', '项目经理', '设计工程师', '需求工程师', '文控/质量', '系统管理员'];
+    const roles = ['管理员', '项目经理', '普通成员', '只读访客'];
 
     el.innerHTML = `
         <div class="page-header">
@@ -1914,7 +1940,7 @@ registerPage('users', async (el) => {
         </div>
         <div class="toolbar">
             <div class="toolbar-right">
-                <button class="btn btn-primary" onclick="showCreateUser()">+ 新建用户</button>
+                <button class="btn btn-primary" data-permission="users.create" onclick="showCreateUser()">+ 新建用户</button>
             </div>
         </div>
         <div class="card">
@@ -1930,8 +1956,8 @@ registerPage('users', async (el) => {
                                 <td>${u.email || '-'}</td>
                                 <td><span class="badge ${u.is_active ? 'badge-success' : 'badge-gray'}">${u.is_active ? '启用' : '禁用'}</span></td>
                                 <td class="actions">
-                                    <button class="btn btn-sm" onclick="showEditUser(${JSON.stringify(u).replace(/"/g, '&quot;')})">编辑</button>
-                                    ${u.is_active ? `<button class="btn btn-sm btn-danger" onclick="disableUser(${u.id})">禁用</button>` : ''}
+                                    <button class="btn btn-sm" data-permission="users.edit" onclick="showEditUser(${JSON.stringify(u).replace(/"/g, '&quot;')})">编辑</button>
+                                    ${u.is_active ? `<button class="btn btn-sm btn-danger" data-permission="users.delete" onclick="disableUser(${u.id})">禁用</button>` : ''}
                                 </td>
                             </tr>
                         `).join('')}
@@ -1943,7 +1969,7 @@ registerPage('users', async (el) => {
 });
 
 function showCreateUser() {
-    const roles = ['项目管理员', '项目经理', '设计工程师', '需求工程师', '文控/质量', '系统管理员'];
+    const roles = ['管理员', '项目经理', '普通成员', '只读访客'];
     $('#modal-title').textContent = '新建用户';
     $('#modal-body').innerHTML = `
         <div class="form-row">
@@ -2007,7 +2033,7 @@ async function createUser() {
 }
 
 function showEditUser(user) {
-    const roles = ['项目管理员', '项目经理', '设计工程师', '需求工程师', '文控/质量', '系统管理员'];
+    const roles = ['管理员', '项目经理', '普通成员', '只读访客'];
     $('#modal-title').textContent = '编辑用户';
     $('#modal-body').innerHTML = `
         <div class="form-row">
@@ -2080,6 +2106,32 @@ registerPage('settings', async (el) => {
             <div class="date">配置系统参数</div>
         </div>
 
+        <div class="card role-permissions">
+            <div class="card-header"><span class="card-title">角色权限</span></div>
+            <div class="card-body">
+                <div class="permission-summary">
+                    <div>
+                        <div class="permission-summary-label">当前角色</div>
+                        <div class="permission-summary-value">${cfg.permissions?.role || APP_CONTEXT.role || '-'}</div>
+                    </div>
+                    <div>
+                        <div class="permission-summary-label">可用功能</div>
+                        <div class="permission-summary-value">${(cfg.permissions?.permissions || []).length} 项</div>
+                    </div>
+                </div>
+                <div class="quick-grid permission-role-grid">
+                    ${Object.entries(cfg.permissions?.role_permissions || {}).map(([role, permissions]) => `
+                        <div class="quick-card permission-role-card">
+                            <div class="quick-text">
+                                <h3>${role}</h3>
+                                <p>${permissions.length} 项功能权限</p>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-header"><span class="card-title">基本设置</span></div>
             <div class="card-body">
@@ -2102,7 +2154,7 @@ registerPage('settings', async (el) => {
                     <label class="form-label">项目类型 (JSON)</label>
                     <textarea class="form-textarea" id="s-types">${JSON.stringify(cfg.project_types, null, 2)}</textarea>
                 </div>
-                <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+                <button class="btn btn-primary" data-permission="settings.edit" onclick="saveSettings()">保存设置</button>
             </div>
         </div>
 
@@ -2129,7 +2181,7 @@ registerPage('settings', async (el) => {
                            value="${(cfg.approval_stages?.bom || []).join(',')}"
                            placeholder="角色用逗号分隔">
                 </div>
-                <button class="btn btn-primary" onclick="saveApprovalSettings()">保存审批设置</button>
+                <button class="btn btn-primary" data-permission="settings.edit" onclick="saveApprovalSettings()">保存审批设置</button>
             </div>
         </div>
 
@@ -2137,10 +2189,10 @@ registerPage('settings', async (el) => {
             <div class="card-header"><span class="card-title">备份与恢复</span></div>
             <div class="card-body">
                 <div style="display:flex;gap:12px;flex-wrap:wrap">
-                    <button class="btn btn-primary" onclick="doBackup()">📦 立即备份</button>
+                    <button class="btn btn-primary" data-permission="settings.edit" onclick="doBackup()">📦 立即备份</button>
                     <label class="btn" style="cursor:pointer">
                         📥 恢复备份
-                        <input type="file" accept=".zip" style="display:none" onchange="doRestore(this)">
+                        <input type="file" accept=".zip" style="display:none" data-permission="settings.edit" onchange="doRestore(this)">
                     </label>
                 </div>
                 <p style="font-size:12px;color:var(--text-muted);margin-top:12px">
@@ -2253,20 +2305,18 @@ async function filterProjectFiles(pid, category) {
 function previewFile(fid, fileName) {
     const ext = fileName.split('.').pop().toLowerCase();
     const previewUrl = `/api/files/${fid}/preview`;
-
-    if (ext === 'pdf') {
-        // PDF：新标签页内嵌查看
-        window.open(previewUrl, '_blank');
-    } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
-        // 图片：弹窗查看
+    const downloadUrl = `/api/files/${fid}/download`;
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
+        resetFileViewer();
         $('#modal-title').textContent = fileName;
-        $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" style="max-width:100%;max-height:70vh;border-radius:var(--radius)"></div>`;
+        $('#modal-body').innerHTML = `<div style="text-align:center"><img src="${previewUrl}" alt="${fileName}" style="max-width:100%;max-height:70vh"></div>`;
         $('#modal-footer').innerHTML = `<a class="btn" href="/api/files/${fid}/download">下载原文件</a> <button class="btn" onclick="hideModal('modal-main')">关闭</button>`;
         showModal('modal-main');
-    } else {
-        // 其他文件：新标签页尝试查看
-        window.open(previewUrl, '_blank');
+        return;
     }
+    if (!['pdf', 'docx', 'stp', 'step', 'doc', 'x_t', 'x_b'].includes(ext)) return location.assign(downloadUrl);
+    hideModal('modal-main');
+    return openFileViewer({name: fileName, fileName, extension: ext, previewUrl, downloadUrl});
 }
 </script>
 </body>
